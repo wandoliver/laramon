@@ -1,0 +1,12 @@
+/* source(none) disables automatic source detection: builds must scan only
+   the explicit, committed sources below so the output is identical on every
+   machine — no storage/, vendor/, or public/build feedback. */
+@import 'tailwindcss' source(none);
+
+@source '../views';
+@source '../js';
+
+@theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}

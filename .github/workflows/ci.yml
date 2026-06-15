@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  hub-tests:
+    name: Hub tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: intl, mbstring, pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare Laravel
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Run hub test suite
+        run: php artisan test
+
+  agent-tests:
+    name: Agent tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: mbstring, pdo_sqlite
+          coverage: none
+
+      - name: Install dependencies
+        working-directory: packages/agent
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run agent test suite
+        working-directory: packages/agent
+        run: vendor/bin/phpunit
+
+  assets-fresh:
+    name: Built assets are fresh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Check committed build output
+        run: |
+          if [ -n "$(git status --porcelain public/build)" ]; then
+            echo "public/build is stale. Run 'npm run build' and commit the output."
+            git status --porcelain public/build
+            exit 1
+          fi

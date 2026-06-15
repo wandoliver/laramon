@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+*.blade.php diff=html
+*.css diff=css
+*.html diff=html
+*.md diff=markdown
+*.php diff=php
+
+/.github export-ignore
+/.gitlab-ci.yml export-ignore
+/bin/publish-github.sh export-ignore
+/docs/internal export-ignore
+/publish export-ignore
+.styleci.yml export-ignore
