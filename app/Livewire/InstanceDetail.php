@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use App\Models\Instance;
 use App\Services\BucketQuery;
+use App\Support\Histogram;
 use App\Support\TimeRange;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
@@ -18,6 +19,9 @@ class InstanceDetail extends Component
 
     #[Url]
     public string $routesSort = 'count';
+
+    #[Url(as: 'resolved')]
+    public bool $showResolvedExceptions = false;
 
     public function mount(Instance $instance): void
     {
@@ -76,7 +80,7 @@ class InstanceDetail extends Component
 
             for ($t = $from - ($from % $step); $t <= $to; $t += $step) {
                 $data[] = isset($hist[$t])
-                    ? \App\Support\Histogram::percentile(\App\Support\Histogram::bins($hist[$t]), 0.95)
+                    ? Histogram::percentile(Histogram::bins($hist[$t]), 0.95)
                     : null;
             }
 
@@ -98,12 +102,12 @@ class InstanceDetail extends Component
             ->pluck('count', 'key')
             ->all();
 
-        $binsByRoute = \App\Support\Histogram::binsByRoute($histTotals);
+        $binsByRoute = Histogram::binsByRoute($histTotals);
 
         $routes = $buckets->topKeys($this->instance->id, 'request', $from, $to, 'count', 500)
             ->map(function (object $row) use ($binsByRoute) {
                 $row->p95 = isset($binsByRoute[$row->key])
-                    ? \App\Support\Histogram::percentile($binsByRoute[$row->key], 0.95)
+                    ? Histogram::percentile($binsByRoute[$row->key], 0.95)
                     : null;
 
                 return $row;
@@ -129,12 +133,12 @@ class InstanceDetail extends Component
             }
         }
 
-        $bins = \App\Support\Histogram::bins($keyCounts);
+        $bins = Histogram::bins($keyCounts);
 
         return [
             'count' => $total->count,
             'avg' => $total->avg,
-            'p95' => $bins !== [] ? \App\Support\Histogram::percentile($bins, 0.95) : null,
+            'p95' => $bins !== [] ? Histogram::percentile($bins, 0.95) : null,
         ];
     }
 
@@ -258,10 +262,15 @@ class InstanceDetail extends Component
      */
     private function exceptionGroups(BucketQuery $buckets, int $from, int $to): Collection
     {
-        return $this->instance->exceptionGroups()
+        $query = $this->instance->exceptionGroups()
             ->orderByDesc('last_seen_at')
-            ->limit(25)
-            ->get()
+            ->limit(25);
+
+        if (! $this->showResolvedExceptions) {
+            $query->whereNull('resolved_at');
+        }
+
+        return $query->get()
             ->map(function ($group) use ($buckets, $from, $to) {
                 $series = $buckets->series($this->instance->id, 'exception', $group->fingerprint, $from, $to, 48);
 

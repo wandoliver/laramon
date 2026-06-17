@@ -105,6 +105,46 @@ class DashboardTest extends TestCase
             ->assertSee('98 ms'); // Histogram::percentile(['le_100' => 10], 0.95) = 97.5
     }
 
+    public function test_instance_detail_hides_resolved_exceptions_by_default(): void
+    {
+        $instance = Instance::factory()->create();
+
+        ExceptionGroup::query()->create([
+            'instance_id' => $instance->id,
+            'fingerprint' => md5('RuntimeException|app/Open.php:1'),
+            'class' => 'RuntimeException',
+            'location' => 'app/Open.php:1',
+            'first_seen_at' => now()->subDay(),
+            'last_seen_at' => now(),
+            'total_count' => 5,
+        ]);
+
+        ExceptionGroup::query()->create([
+            'instance_id' => $instance->id,
+            'fingerprint' => md5('LogicException|app/Closed.php:1'),
+            'class' => 'LogicException',
+            'location' => 'app/Closed.php:1',
+            'first_seen_at' => now()->subDay(),
+            'last_seen_at' => now(),
+            'total_count' => 3,
+            'resolved_at' => now(),
+            'resolved_by_user_id' => $this->user->id,
+        ]);
+
+        $this->actingAs($this->user)
+            ->get('/instances/'.$instance->slug)
+            ->assertOk()
+            ->assertSee('RuntimeException')
+            ->assertDontSee('LogicException');
+
+        $this->actingAs($this->user)
+            ->get('/instances/'.$instance->slug.'?resolved=1')
+            ->assertOk()
+            ->assertSee('RuntimeException')
+            ->assertSee('LogicException')
+            ->assertSee('resolved');
+    }
+
     public function test_instance_detail_renders_for_every_range(): void
     {
         $instance = Instance::factory()->create();

@@ -244,6 +244,13 @@
 
         {{-- Exceptions --}}
         <x-panel title="Exceptions" subtitle="Grouped by class and location — click a group for traces and occurrences">
+            <x-slot:actions>
+                <button type="button" wire:click="$toggle('showResolvedExceptions')"
+                        class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500">
+                    {{ $showResolvedExceptions ? 'Hide resolved' : 'Show resolved' }}
+                </button>
+            </x-slot:actions>
+
             <x-chart :chart="$exceptionsChart" :height="160" />
 
             <div class="mt-5 divide-y divide-zinc-800/70">
@@ -251,7 +258,12 @@
                     <a href="{{ route('instance.exception', [$instance, $entry['group']->fingerprint]) }}"
                        class="flex items-center gap-4 py-2.5 transition hover:bg-zinc-800/30" wire:key="exc-{{ $entry['group']->id }}">
                         <div class="min-w-0 flex-1">
-                            <p class="truncate font-mono text-sm text-rose-300">{{ $entry['group']->class }}</p>
+                            <div class="flex items-center gap-2">
+                                <p class="truncate font-mono text-sm {{ $entry['group']->resolved_at ? 'text-zinc-400' : 'text-rose-300' }}">{{ $entry['group']->class }}</p>
+                                @if ($entry['group']->resolved_at)
+                                    <span class="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-400">resolved</span>
+                                @endif
+                            </div>
                             <p class="mt-0.5 truncate text-xs text-zinc-500">
                                 {{ $entry['group']->location ?? 'unknown location' }}
                                 · first {{ $entry['group']->first_seen_at->diffForHumans(short: true) }}
@@ -265,7 +277,7 @@
                         </div>
                     </a>
                 @empty
-                    <p class="py-3 text-sm text-zinc-600">No exceptions recorded. 🎉</p>
+                    <p class="py-3 text-sm text-zinc-600">{{ $showResolvedExceptions ? 'No exceptions recorded. 🎉' : 'No open exceptions. 🎉' }}</p>
                 @endforelse
             </div>
         </x-panel>

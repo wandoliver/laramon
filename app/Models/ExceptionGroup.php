@@ -17,6 +17,9 @@ class ExceptionGroup extends Model
         'first_seen_at',
         'last_seen_at',
         'total_count',
+        'resolved_at',
+        'resolved_by_user_id',
+        'resolved_comment',
     ];
 
     protected function casts(): array
@@ -24,11 +27,17 @@ class ExceptionGroup extends Model
         return [
             'first_seen_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'resolved_at' => 'datetime',
         ];
     }
 
     public function instance(): BelongsTo
     {
         return $this->belongsTo(Instance::class);
+    }
+
+    public function resolvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolved_by_user_id');
     }
 }

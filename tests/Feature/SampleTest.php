@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\ExceptionDetail;
 use App\Models\ExceptionGroup;
 use App\Models\Instance;
 use App\Models\MetricBucket;
@@ -9,6 +10,7 @@ use App\Models\Sample;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class SampleTest extends TestCase
@@ -116,6 +118,37 @@ class SampleTest extends TestCase
             ->assertSee('RuntimeException')
             ->assertSee('It exploded spectacularly')
             ->assertSee('app/Foo.php(42)');
+    }
+
+    public function test_exception_groups_can_be_resolved_with_a_comment(): void
+    {
+        $user = User::factory()->create();
+        $fingerprint = md5('RuntimeException|app/Foo.php:42');
+
+        $group = ExceptionGroup::query()->create([
+            'instance_id' => $this->instance->id,
+            'fingerprint' => $fingerprint,
+            'class' => 'RuntimeException',
+            'location' => 'app/Foo.php:42',
+            'first_seen_at' => now()->subDay(),
+            'last_seen_at' => now(),
+            'total_count' => 7,
+        ]);
+
+        Livewire::actingAs($user)
+            ->test(ExceptionDetail::class, ['instance' => $this->instance, 'fingerprint' => $fingerprint])
+            ->call('startResolving')
+            ->set('resolutionComment', 'Fixed in production and verified no new occurrences.')
+            ->call('resolve')
+            ->assertHasNoErrors()
+            ->assertSet('showResolutionForm', false)
+            ->assertSee('resolved');
+
+        $group->refresh();
+
+        $this->assertNotNull($group->resolved_at);
+        $this->assertSame($user->id, $group->resolved_by_user_id);
+        $this->assertSame('Fixed in production and verified no new occurrences.', $group->resolved_comment);
     }
 
     public function test_query_detail_page_renders_with_samples(): void

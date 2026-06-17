@@ -35,6 +35,10 @@ class Alerts extends Component
 
     public ?string $testResult = null;
 
+    public ?int $resolvingEventId = null;
+
+    public string $resolutionComment = '';
+
     public function save(): void
     {
         $data = $this->validate([
@@ -123,11 +127,47 @@ class Alerts extends Component
             : "Delivery failed for \"{$rule->name}\" — check the webhook URL and laravel.log.";
     }
 
+    public function startResolving(int $eventId): void
+    {
+        AlertEvent::query()->whereKey($eventId)->whereNull('resolved_at')->firstOrFail();
+
+        $this->resetValidation('resolutionComment');
+        $this->resolvingEventId = $eventId;
+        $this->resolutionComment = '';
+    }
+
+    public function cancelResolution(): void
+    {
+        $this->resetValidation('resolutionComment');
+        $this->reset('resolvingEventId', 'resolutionComment');
+    }
+
+    public function resolveEvent(): void
+    {
+        $data = $this->validate([
+            'resolvingEventId' => ['required', 'integer', 'exists:alert_events,id'],
+            'resolutionComment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $event = AlertEvent::query()
+            ->whereKey($data['resolvingEventId'])
+            ->whereNull('resolved_at')
+            ->firstOrFail();
+
+        $event->forceFill([
+            'resolved_at' => now(),
+            'resolved_by_user_id' => auth()->id(),
+            'resolved_comment' => $data['resolutionComment'] !== '' ? $data['resolutionComment'] : null,
+        ])->save();
+
+        $this->cancelResolution();
+    }
+
     public function render()
     {
         return view('livewire.alerts', [
             'rules' => AlertRule::query()->with('instance')->orderBy('name')->get(),
-            'events' => AlertEvent::query()->with(['rule', 'instance'])->orderByDesc('triggered_at')->limit(50)->get(),
+            'events' => AlertEvent::query()->with(['rule', 'instance', 'resolvedBy'])->orderByDesc('triggered_at')->limit(50)->get(),
             'instances' => Instance::query()->orderBy('name')->get(),
             'metricTypes' => collect([AlertRule::TYPE_HEARTBEAT])
                 ->merge(DB::table('metric_buckets')->distinct()->orderBy('type')->pluck('type'))

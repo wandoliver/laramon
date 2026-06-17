@@ -15,7 +15,7 @@ class HubClient
 {
     public const SCHEMA_VERSION = 1;
 
-    public const AGENT_VERSION = '0.1.0';
+    public const AGENT_VERSION = '0.2.0';
 
     /**
      * @param  list<array<string, mixed>>  $buckets

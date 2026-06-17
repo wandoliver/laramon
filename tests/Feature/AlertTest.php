@@ -184,4 +184,34 @@ class AlertTest extends TestCase
 
         $this->assertSame('Queue backlog', AlertRule::query()->sole()->name);
     }
+
+    public function test_open_alert_events_can_be_manually_resolved_with_a_comment(): void
+    {
+        $user = User::factory()->create();
+        $instance = Instance::factory()->create();
+        $rule = $this->makeRule(['instance_id' => $instance->id]);
+
+        $event = AlertEvent::query()->create([
+            'alert_rule_id' => $rule->id,
+            'instance_id' => $instance->id,
+            'value' => 25,
+            'triggered_at' => now(),
+            'notified' => true,
+        ]);
+
+        Livewire::actingAs($user)
+            ->test(Alerts::class)
+            ->call('startResolving', $event->id)
+            ->set('resolutionComment', 'Deployed a fix and verified the queue drained.')
+            ->call('resolveEvent')
+            ->assertHasNoErrors()
+            ->assertSet('resolvingEventId', null)
+            ->assertSet('resolutionComment', '');
+
+        $event->refresh();
+
+        $this->assertNotNull($event->resolved_at);
+        $this->assertSame($user->id, $event->resolved_by_user_id);
+        $this->assertSame('Deployed a fix and verified the queue drained.', $event->resolved_comment);
+    }
 }

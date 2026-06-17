@@ -22,13 +22,59 @@ class ExceptionDetail extends Component
     #[Url]
     public string $range = '24h';
 
+    public bool $showResolutionForm = false;
+
+    public string $resolutionComment = '';
+
     public function mount(Instance $instance, string $fingerprint): void
     {
         $this->instance = $instance;
         $this->group = ExceptionGroup::query()
+            ->with('resolvedBy')
             ->where('instance_id', $instance->id)
             ->where('fingerprint', $fingerprint)
             ->firstOrFail();
+    }
+
+    public function startResolving(): void
+    {
+        $this->resetValidation('resolutionComment');
+        $this->showResolutionForm = true;
+        $this->resolutionComment = '';
+    }
+
+    public function cancelResolution(): void
+    {
+        $this->resetValidation('resolutionComment');
+        $this->showResolutionForm = false;
+        $this->resolutionComment = '';
+    }
+
+    public function resolve(): void
+    {
+        $data = $this->validate([
+            'resolutionComment' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $this->group->forceFill([
+            'resolved_at' => now(),
+            'resolved_by_user_id' => auth()->id(),
+            'resolved_comment' => $data['resolutionComment'] !== '' ? $data['resolutionComment'] : null,
+        ])->save();
+
+        $this->group->load('resolvedBy');
+        $this->cancelResolution();
+    }
+
+    public function reopen(): void
+    {
+        $this->group->forceFill([
+            'resolved_at' => null,
+            'resolved_by_user_id' => null,
+            'resolved_comment' => null,
+        ])->save();
+
+        $this->group->unsetRelation('resolvedBy');
     }
 
     public function render(BucketQuery $buckets)

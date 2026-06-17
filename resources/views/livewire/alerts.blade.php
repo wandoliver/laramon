@@ -158,21 +158,64 @@
             <x-panel title="Recent events" subtitle="Last 50 triggers and recoveries">
                 <div class="divide-y divide-zinc-800/70">
                     @forelse ($events as $event)
-                        <div class="flex items-center gap-3 py-2.5 text-sm" wire:key="event-{{ $event->id }}">
-                            @if ($event->resolved_at)
-                                <span class="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-400">resolved</span>
-                            @else
-                                <span class="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-xs font-medium text-rose-400">open</span>
+                        <div class="py-2.5 text-sm" wire:key="event-{{ $event->id }}">
+                            <div class="flex items-center gap-3">
+                                @if ($event->resolved_at)
+                                    <span class="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs font-medium text-emerald-400">resolved</span>
+                                @else
+                                    <span class="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-xs font-medium text-rose-400">open</span>
+                                @endif
+                                <span class="min-w-0 flex-1 truncate text-zinc-300">
+                                    {{ $event->rule?->name ?? '(deleted rule)' }} — {{ $event->instance?->name }}
+                                </span>
+                                <span class="shrink-0 tabular-nums text-xs text-zinc-500">
+                                    {{ $event->triggered_at->format('d.m. H:i') }}{{ $event->resolved_at ? ' → '.$event->resolved_at->format('H:i') : '' }}
+                                </span>
+                                @unless ($event->notified)
+                                    <span class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-400" title="Teams delivery failed">not delivered</span>
+                                @endunless
+                                @unless ($event->resolved_at)
+                                    <button type="button" wire:click="startResolving({{ $event->id }})"
+                                            class="shrink-0 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500">
+                                        Resolve
+                                    </button>
+                                @endunless
+                            </div>
+
+                            @if ($event->resolved_at && ($event->resolvedBy || $event->resolved_comment))
+                                <div class="mt-1.5 pl-16 text-xs text-zinc-500">
+                                    @if ($event->resolvedBy)
+                                        Resolved by {{ $event->resolvedBy->name }}
+                                    @else
+                                        Resolved automatically
+                                    @endif
+                                    @if ($event->resolved_comment)
+                                        <span class="text-zinc-600">·</span>
+                                        <span class="text-zinc-400">{{ $event->resolved_comment }}</span>
+                                    @endif
+                                </div>
                             @endif
-                            <span class="min-w-0 flex-1 truncate text-zinc-300">
-                                {{ $event->rule?->name ?? '(deleted rule)' }} — {{ $event->instance?->name }}
-                            </span>
-                            <span class="shrink-0 tabular-nums text-xs text-zinc-500">
-                                {{ $event->triggered_at->format('d.m. H:i') }}{{ $event->resolved_at ? ' → '.$event->resolved_at->format('H:i') : '' }}
-                            </span>
-                            @unless ($event->notified)
-                                <span class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-400" title="Teams delivery failed">not delivered</span>
-                            @endunless
+
+                            @if ($resolvingEventId === $event->id)
+                                <form wire:submit="resolveEvent" class="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                                    <label class="mb-1 block text-xs font-medium text-zinc-400">Resolution comment <span class="font-normal text-zinc-600">(optional)</span></label>
+                                    <textarea wire:model="resolutionComment" rows="3"
+                                              class="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-700 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30"
+                                              placeholder="What changed, or why this can be closed?"></textarea>
+                                    @error('resolutionComment') <p class="mt-1 text-sm text-rose-400">{{ $message }}</p> @enderror
+
+                                    <div class="mt-2 flex justify-end gap-2">
+                                        <button type="button" wire:click="cancelResolution"
+                                                class="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500">
+                                            Cancel
+                                        </button>
+                                        <button type="submit"
+                                                class="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-400">
+                                            Mark resolved
+                                        </button>
+                                    </div>
+                                </form>
+                            @endif
                         </div>
                     @empty
                         <p class="py-3 text-sm text-zinc-600">No alert events yet. 🎉</p>

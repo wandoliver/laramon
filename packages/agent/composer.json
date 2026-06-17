@@ -1,6 +1,7 @@
 {
     "name": "laramon/agent",
     "description": "Monitoring agent that ships Laravel Pulse aggregates and business metrics to a LaraMon hub.",
+    "version": "0.2.0",
     "license": "MIT",
     "type": "library",
     "keywords": ["laravel", "monitoring", "pulse", "observability"],

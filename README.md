@@ -1,6 +1,6 @@
 # LaraMon
 
-![Release](https://img.shields.io/badge/release-v0.1.0-blue)
+![Release](https://img.shields.io/badge/release-v0.2.0-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Self-hosted fleet monitoring for Laravel applications — a central hub that every instance you operate reports into. Inspired by [Laravel Nightwatch](https://nightwatch.laravel.com), built for teams who want their telemetry on their own infrastructure.

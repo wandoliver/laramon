@@ -15,6 +15,8 @@ class AlertEvent extends Model
         'value',
         'triggered_at',
         'resolved_at',
+        'resolved_by_user_id',
+        'resolved_comment',
         'notified',
     ];
 
@@ -36,5 +38,10 @@ class AlertEvent extends Model
     public function instance(): BelongsTo
     {
         return $this->belongsTo(Instance::class);
+    }
+
+    public function resolvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolved_by_user_id');
     }
 }

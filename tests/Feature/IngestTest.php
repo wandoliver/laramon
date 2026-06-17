@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ExceptionGroup;
 use App\Models\Instance;
 use App\Models\MetricBucket;
+use App\Support\InstanceToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -165,7 +166,7 @@ class IngestTest extends TestCase
     {
         $legacyToken = 'ahm_'.$this->instance->id.'_'.Str::random(40);
         $this->instance->forceFill([
-            'token_hash' => \App\Support\InstanceToken::hash($legacyToken),
+            'token_hash' => InstanceToken::hash($legacyToken),
         ])->save();
 
         $this->ingest($this->payload(), $legacyToken)->assertOk();
@@ -200,6 +201,42 @@ class IngestTest extends TestCase
         $group = ExceptionGroup::query()->where('fingerprint', $fingerprint)->sole();
 
         $this->assertSame(7, (int) $group->total_count);
+        $this->assertTrue($group->last_seen_at->equalTo($newer));
+    }
+
+    public function test_new_exception_occurrence_reopens_resolved_group(): void
+    {
+        $fingerprint = str_repeat('ef', 16);
+        $resolvedAt = now()->subHour()->startOfSecond();
+        $newer = now()->startOfSecond();
+
+        ExceptionGroup::query()->create([
+            'instance_id' => $this->instance->id,
+            'fingerprint' => $fingerprint,
+            'class' => 'RuntimeException',
+            'location' => 'app/Services/Foo.php:42',
+            'first_seen_at' => $resolvedAt->copy()->subDay(),
+            'last_seen_at' => $resolvedAt->copy()->subMinute(),
+            'total_count' => 3,
+            'resolved_at' => $resolvedAt,
+            'resolved_comment' => 'Fixed earlier.',
+        ]);
+
+        $this->ingest($this->payload([
+            'exceptions' => [[
+                'fingerprint' => $fingerprint,
+                'class' => 'RuntimeException',
+                'location' => 'app/Services/Foo.php:42',
+                'count' => 1,
+                'last_seen_at' => $newer->toIso8601String(),
+            ]],
+        ]))->assertOk();
+
+        $group = ExceptionGroup::query()->where('fingerprint', $fingerprint)->sole();
+
+        $this->assertNull($group->resolved_at);
+        $this->assertNull($group->resolved_comment);
+        $this->assertSame(4, (int) $group->total_count);
         $this->assertTrue($group->last_seen_at->equalTo($newer));
     }
 }

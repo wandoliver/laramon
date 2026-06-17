@@ -39,6 +39,16 @@ class ExceptionAggregator
                 ->whereKey($group->id)
                 ->increment('total_count', (int) $exception['count']);
 
+            if ($group->resolved_at !== null && $lastSeenAt->gt($group->resolved_at)) {
+                $group->newQuery()
+                    ->whereKey($group->id)
+                    ->update([
+                        'resolved_at' => null,
+                        'resolved_by_user_id' => null,
+                        'resolved_comment' => null,
+                    ]);
+            }
+
             $group->newQuery()
                 ->whereKey($group->id)
                 ->where('last_seen_at', '<', $lastSeenAt)

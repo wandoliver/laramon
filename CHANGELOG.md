@@ -5,6 +5,15 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-17
+
+### Added
+
+- Exception groups can now be marked resolved from their detail page, including optional resolution comments and the resolving user.
+- Resolved exception groups automatically reopen when a newer occurrence is ingested.
+- Manual alert resolution from the Alerts screen, including optional resolution comments and the resolving user.
+- Alert event history now keeps manual resolution metadata for follow-up verification.
+
 ## [0.1.0] - 2026-06-15
 
 ### Added
