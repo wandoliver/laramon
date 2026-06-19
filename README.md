@@ -1,6 +1,6 @@
 # LaraMon
 
-![Release](https://img.shields.io/badge/release-v0.2.0-blue)
+![Release](https://img.shields.io/badge/release-v0.3.0-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Self-hosted fleet monitoring for Laravel applications — a central hub that every instance you operate reports into. Inspired by [Laravel Nightwatch](https://nightwatch.laravel.com), built for teams who want their telemetry on their own infrastructure.
@@ -25,7 +25,7 @@ Each monitored application runs [Laravel Pulse](https://pulse.laravel.com) local
 
 **Alerts:** threshold rules over any collected metric — error rate, queue backlog, slow requests, business gauges, or plain "instance silent for N minutes" — evaluated every minute with breach/recovery notifications delivered to **Microsoft Teams** (Workflows webhooks, Adaptive Cards). Cooldowns stop flapping metrics from spamming the channel.
 
-**Drill-downs:** exceptions and slow queries are clickable. The agent captures the latest occurrences per fingerprint — exception message, stack trace, and request URL; slow-query SQL, duration, and code location — so you can triage straight from the hub. Deliberately excluded: request payloads and query bindings, so user data never leaves the instance. Deeper diagnostics stay in Sentry.
+**Drill-downs:** exceptions, slow queries, and slow requests are clickable. The agent captures the latest occurrences per fingerprint — exception message, stack trace, request URL, slow-query SQL, duration, resource timings, and safe `context.*` metadata — so you can triage straight from the hub. Deliberately excluded: request payloads and query bindings, so user data never leaves the instance. Deeper diagnostics stay in Sentry.
 
 **Design choices, deliberately boring:** pre-aggregated snapshots instead of raw event streaming; one wide time-series table; idempotent batches (retries are always safe); the agent never throws — a dead hub can never take a client application down.
 

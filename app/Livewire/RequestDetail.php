@@ -90,8 +90,127 @@ class RequestDetail extends Component
         return view('livewire.request-detail', [
             'chart' => $chart,
             'samples' => $samples,
+            'sampleDiagnostics' => $samples->mapWithKeys(fn (Sample $sample) => [
+                $sample->id => $this->sampleDiagnostics($sample->payload),
+            ]),
             'rangeCount' => $series->sum('count'),
             'rangeMax' => $series->max('max'),
         ])->title('Slow request — '.config('app.name'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{metrics: list<array{label: string, value: string, tone: string}>, context: list<array{label: string, value: string}>, raw: string}
+     */
+    private function sampleDiagnostics(array $payload): array
+    {
+        $metrics = [];
+
+        foreach ([
+            'duration_ms' => ['Duration', ' ms', 'amber'],
+            'db_query_count' => ['DB queries', '', 'sky'],
+            'db_ms' => ['DB time', ' ms', 'sky'],
+            'memory_peak_mb' => ['Memory peak', ' MB', 'emerald'],
+        ] as $key => [$label, $suffix, $tone]) {
+            $value = $this->payloadValue($payload, $key);
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $metrics[] = [
+                'label' => $label,
+                'value' => $this->formatPayloadValue($value, $suffix),
+                'tone' => $tone,
+            ];
+        }
+
+        return [
+            'metrics' => $metrics,
+            'context' => $this->contextDiagnostics($payload),
+            'raw' => json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}',
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return list<array{label: string, value: string}>
+     */
+    private function contextDiagnostics(array $payload): array
+    {
+        $context = [];
+
+        if (isset($payload['context']) && is_array($payload['context'])) {
+            foreach ($this->flattenPayload($payload['context']) as $key => $value) {
+                $context['context.'.$key] = $value;
+            }
+        }
+
+        foreach ($payload as $key => $value) {
+            if (is_string($key) && str_starts_with($key, 'context.')) {
+                $context[$key] = $value;
+            }
+        }
+
+        return collect($context)
+            ->sortKeys()
+            ->map(fn (mixed $value, string $key) => [
+                'label' => str($key)->after('context.')->replace(['_', '.'], ' ')->headline()->toString(),
+                'value' => $this->formatPayloadValue($value),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function flattenPayload(array $payload, string $prefix = ''): array
+    {
+        $flat = [];
+
+        foreach ($payload as $key => $value) {
+            $path = $prefix === '' ? (string) $key : $prefix.'.'.$key;
+
+            if (is_array($value)) {
+                $flat += $this->flattenPayload($value, $path);
+
+                continue;
+            }
+
+            $flat[$path] = $value;
+        }
+
+        return $flat;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function payloadValue(array $payload, string $key): mixed
+    {
+        return array_key_exists($key, $payload) ? $payload[$key] : data_get($payload, $key);
+    }
+
+    private function formatPayloadValue(mixed $value, string $suffix = ''): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'Yes' : 'No';
+        }
+
+        if (is_int($value) || is_float($value)) {
+            $formatted = is_float($value) && floor($value) !== $value
+                ? rtrim(rtrim(number_format($value, 1), '0'), '.')
+                : (string) round($value);
+
+            return $formatted.$suffix;
+        }
+
+        if ($value === null || $value === '') {
+            return '—';
+        }
+
+        return (string) $value;
     }
 }

@@ -209,7 +209,21 @@ class SampleTest extends TestCase
             'instance_id' => $this->instance->id,
             'kind' => 'slow_request',
             'fingerprint' => $hash,
-            'payload' => ['method' => 'GET', 'path' => '/management/appointments', 'status' => 200, 'duration_ms' => 1800],
+            'payload' => [
+                'method' => 'GET',
+                'path' => '/management/appointments',
+                'status' => 200,
+                'duration_ms' => 1800,
+                'db_query_count' => 42,
+                'db_ms' => 920,
+                'memory_peak_mb' => 128.5,
+                'context' => [
+                    'calendar_view' => 'resourceTimelineWeek',
+                    'calendar_range_days' => 7,
+                    'calendar_response_items' => 430,
+                    'calendar_relations' => 'appointments,clients,staff',
+                ],
+            ],
             'occurred_at' => now(),
         ]);
 
@@ -218,7 +232,22 @@ class SampleTest extends TestCase
             ->assertOk()
             ->assertSee('Slow request')
             ->assertSee('/management/appointments')
-            ->assertSee('1800 ms');
+            ->assertSee('1800 ms')
+            ->assertSee('DB queries')
+            ->assertSee('42')
+            ->assertSee('DB time')
+            ->assertSee('920 ms')
+            ->assertSee('Memory peak')
+            ->assertSee('128.5 MB')
+            ->assertSee('Calendar View')
+            ->assertSee('resourceTimelineWeek')
+            ->assertSee('Calendar Range Days')
+            ->assertSee('7')
+            ->assertSee('Calendar Response Items')
+            ->assertSee('430')
+            ->assertSee('Calendar Relations')
+            ->assertSee('appointments,clients,staff')
+            ->assertSee('Raw sample payload');
     }
 
     public function test_query_detail_404s_for_unknown_hash(): void

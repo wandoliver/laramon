@@ -5,6 +5,13 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-19
+
+### Added
+
+- Slow-request drill-downs now render exported occurrence diagnostics, including request duration, database query count, database time, memory peak, and safe `context.*` metadata.
+- Slow-request occurrence rows include an expandable raw sample payload so custom agent metadata remains inspectable without hub UI changes.
+
 ## [0.2.0] - 2026-06-17
 
 ### Added
