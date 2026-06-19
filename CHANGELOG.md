@@ -5,6 +5,13 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-19
+
+### Security
+
+- Updated `guzzlehttp/guzzle` to 7.12.1 to resolve medium-severity HTTP client advisories.
+- Updated `guzzlehttp/psr7` to 2.12.1 to resolve a medium-severity CRLF injection advisory.
+
 ## [0.3.0] - 2026-06-19
 
 ### Added

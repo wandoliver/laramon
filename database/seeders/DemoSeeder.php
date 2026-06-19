@@ -41,7 +41,7 @@ class DemoSeeder extends Seeder
                 'last_heartbeat_at' => $config['heartbeat'],
                 'last_ingest_at' => $config['heartbeat'],
                 'meta' => [
-                    'agent_version' => '0.3.0',
+                    'agent_version' => '0.3.1',
                     'app_version' => '2.4.'.random_int(0, 3),
                     'php_version' => '8.4.21',
                     'laravel_version' => '13.15.0',
