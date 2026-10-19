@@ -2,7 +2,7 @@
 #
 # Publish the agent package to its read-only mirror repo.
 #
-# Usage: bin/publish-agent.sh v0.3.1
+# Usage: bin/publish-agent.sh vX.Y.Z
 #
 set -euo pipefail
 

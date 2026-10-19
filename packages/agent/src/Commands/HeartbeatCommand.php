@@ -3,9 +3,12 @@
 namespace LaraMon\Agent\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use LaraMon\Agent\Export\Watermark;
 use LaraMon\Agent\Http\HubClient;
+use LaraMon\Agent\ScheduledTaskExpectations;
 
 class HeartbeatCommand extends Command
 {
@@ -13,7 +16,7 @@ class HeartbeatCommand extends Command
 
     protected $description = 'Send a heartbeat to the monitor hub';
 
-    public function handle(HubClient $client): int
+    public function handle(HubClient $client, ScheduledTaskExpectations $expectations): int
     {
         if (! config('monitor-agent.enabled')
             || ! config('monitor-agent.hub_url')
@@ -21,14 +24,28 @@ class HeartbeatCommand extends Command
             return self::SUCCESS;
         }
 
+        $scheduler = $expectations->manifest($this->laravel->make(Schedule::class));
+        $scheduler['exported_through'] = $this->exportedThrough();
+
         $client->heartbeat(array_filter([
             'app_version' => config('monitor-agent.app_version'),
             'php_version' => PHP_VERSION,
             'laravel_version' => app()->version(),
             'queue' => $this->queueStats(),
+            'scheduler' => $scheduler,
         ], fn ($value) => $value !== null));
 
         return self::SUCCESS;
+    }
+
+    private function exportedThrough(): ?int
+    {
+        try {
+            return $this->laravel->make(Watermark::class)->get();
+        } catch (\Throwable) {
+            // Missing storage must never make a heartbeat fail or claim coverage.
+            return null;
+        }
     }
 
     /**

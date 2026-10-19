@@ -3,8 +3,12 @@
 namespace LaraMon\Agent\Tests;
 
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use LaraMon\Agent\Sampler;
 
 class SamplerTest extends TestCase
@@ -73,17 +77,17 @@ class SamplerTest extends TestCase
 
     public function test_slow_requests_are_sampled_with_pulse_compatible_fingerprints(): void
     {
-        \Illuminate\Support\Facades\Route::get('/appointments', fn () => 'ok')->name('appointments');
+        Route::get('/appointments', fn () => 'ok')->name('appointments');
 
-        $request = \Illuminate\Http\Request::create('/appointments', 'GET');
+        $request = Request::create('/appointments', 'GET');
         $request->server->set('REQUEST_TIME_FLOAT', microtime(true) - 2.5);
 
         $route = app('router')->getRoutes()->match($request);
         $request->setRouteResolver(fn () => $route);
 
-        app(Sampler::class)->request(new \Illuminate\Foundation\Http\Events\RequestHandled(
+        app(Sampler::class)->request(new RequestHandled(
             $request,
-            new \Illuminate\Http\Response('ok', 200),
+            new Response('ok', 200),
         ));
 
         $row = DB::table('monitor_agent_samples')->where('kind', 'slow_request')->first();
@@ -104,17 +108,17 @@ class SamplerTest extends TestCase
 
     public function test_fast_requests_are_not_sampled(): void
     {
-        \Illuminate\Support\Facades\Route::get('/quick', fn () => 'ok');
+        Route::get('/quick', fn () => 'ok');
 
-        $request = \Illuminate\Http\Request::create('/quick', 'GET');
+        $request = Request::create('/quick', 'GET');
         $request->server->set('REQUEST_TIME_FLOAT', microtime(true) - 0.05);
 
         $route = app('router')->getRoutes()->match($request);
         $request->setRouteResolver(fn () => $route);
 
-        app(Sampler::class)->request(new \Illuminate\Foundation\Http\Events\RequestHandled(
+        app(Sampler::class)->request(new RequestHandled(
             $request,
-            new \Illuminate\Http\Response('ok', 200),
+            new Response('ok', 200),
         ));
 
         $this->assertSame(0, DB::table('monitor_agent_samples')->where('kind', 'slow_request')->count());
@@ -145,7 +149,7 @@ class SamplerTest extends TestCase
 
         app(Sampler::class)->exception(new \RuntimeException('keep me'));
 
-        $this->artisan('monitor-agent:export')->assertExitCode(0);
+        $this->artisan('monitor-agent:export')->assertExitCode(1);
 
         $this->assertSame(1, DB::table('monitor_agent_samples')->count());
     }

@@ -5,6 +5,28 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-19
+
+### Added
+
+- Scheduler history includes failure-only tasks, actual background completion outcomes, and exact completion timestamps. Runtime averages use only timed runs.
+- Opt-in expected-run monitoring for explicitly named scheduled tasks, with timezone-aware deadlines and conservative handling of missing or unverified data.
+- A monitoring data-flow panel showing heartbeat freshness, accepted exports, and confirmed completeness separately, plus a data-flow alert rule type.
+- Agent confirmation of settled, fully exported Pulse intervals, including quiet intervals, after every data chunk has been acknowledged.
+- Regression tests for scheduler outcomes, expected runs, export confirmation/retries, completeness display, and alert recovery.
+- Public deployment and configuration guidance for scheduler and data-flow monitoring.
+
+### Changed
+
+- Instance health now requires confirmed, fresh monitoring data flow. A heartbeat alone no longer establishes health.
+- Metric alert recovery requires a fresh, complete observation window whose end follows the incident start. Heartbeat and data-flow recovery require newly confirmed healthy flow. Missing, stale, partially exported, or unsupported metric streams cannot confirm recovery.
+- Legacy agents can continue exporting history but cannot attest completeness or automatically resolve incidents. Deploy the hub before updating agents.
+
+### Fixed
+
+- Unsupported Redis/custom Pulse ingestion or storage cannot attest an empty database as complete. Returning to supported direct database capture starts a new observation baseline.
+- Export failures retain the watermark and pending samples for retry; duplicate acknowledgements cannot refresh a stalled completeness proof.
+
 ## [0.3.1] - 2026-06-19
 
 ### Security

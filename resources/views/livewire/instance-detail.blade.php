@@ -32,6 +32,15 @@
         </div>
     </div>
 
+    <div class="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <h2 class="mb-3 text-sm font-medium text-zinc-300">Monitoring data flow</h2>
+        <x-data-flow-status :flow="$dataFlow" />
+        @if ($dataFlow['state'] !== 'healthy')
+            <p class="mt-3 text-sm text-amber-400" role="status">{{ $dataFlow['reason'] }} Missing or stale data cannot confirm recovery.</p>
+        @endif
+        <p class="mt-3 text-xs text-zinc-500">Charts and tables show received history. Unconfirmed periods may contain gaps; empty charts and missing records do not confirm that no errors occurred.</p>
+    </div>
+
     <div class="grid gap-4">
         {{-- Active users --}}
         @if ($activeUsers->isNotEmpty())
@@ -60,7 +69,8 @@
             <div class="mb-4 flex flex-wrap gap-6 text-sm">
                 <div>
                     <span class="text-zinc-500">Total</span>
-                    <span class="ml-1.5 font-semibold tabular-nums">{{ Number::abbreviate($requestStats['count']) }}</span>
+                    <span class="ml-1.5 font-semibold tabular-nums">{{ $requestsVerified || $requestStats['count'] > 0 ? Number::abbreviate($requestStats['count']) : '—' }}</span>
+                    @unless ($requestsVerified) <span class="ml-1 text-xs text-amber-400">{{ $requestStats['count'] > 0 ? 'observed · partial' : 'unavailable' }}</span> @endunless
                 </div>
                 <div>
                     <span class="text-zinc-500">Avg</span>
@@ -108,7 +118,7 @@
                                     <td class="w-6 py-2 text-right text-zinc-600 transition group-hover:text-sky-300">›</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="6" class="py-3 text-sm text-zinc-600">No requests in this range.</td></tr>
+                                <tr><td colspan="6" class="py-3 text-sm text-zinc-600">No request records received in this range.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -138,7 +148,7 @@
                                     <td class="w-6 py-2 text-right text-zinc-600 transition group-hover:text-sky-300">›</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="4" class="py-3 text-sm text-zinc-600">No slow requests. 🎉</td></tr>
+                                <tr><td colspan="4" class="py-3 text-sm text-zinc-600">No slow-request records received in this range.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -173,7 +183,7 @@
                             <td class="w-6 py-2 text-right text-zinc-600 transition group-hover:text-sky-300">›</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="py-3 text-sm text-zinc-600">No slow queries in this range. 🎉</td></tr>
+                        <tr><td colspan="5" class="py-3 text-sm text-zinc-600">No slow-query records received in this range.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -213,33 +223,73 @@
         @endif
 
         {{-- Scheduler --}}
-        <x-panel title="Scheduler" subtitle="Task runs, runtimes, and failures">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left text-xs text-zinc-500">
-                        <th class="pb-2 font-medium">Task</th>
-                        <th class="pb-2 pl-4 text-right font-medium">Runs</th>
-                        <th class="pb-2 pl-4 text-right font-medium">Avg</th>
-                        <th class="pb-2 pl-4 text-right font-medium">Max</th>
-                        <th class="pb-2 pl-4 text-right font-medium">Failures</th>
-                        <th class="pb-2 pl-4 text-right font-medium">Last run</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-zinc-800/70">
-                    @forelse ($scheduledTasks as $task)
-                        <tr>
-                            <td class="py-2 pr-3"><x-key-cell :value="$task->key" /></td>
-                            <td class="py-2 pl-4 text-right tabular-nums text-zinc-300">{{ $task->count }}</td>
-                            <td class="py-2 pl-4 text-right tabular-nums text-zinc-400">{{ $task->avg !== null ? round($task->avg / 1000, 1).' s' : '—' }}</td>
-                            <td class="py-2 pl-4 text-right tabular-nums text-zinc-400">{{ $task->max !== null ? round($task->max / 1000, 1).' s' : '—' }}</td>
-                            <td class="py-2 pl-4 text-right tabular-nums {{ $task->failures > 0 ? 'font-semibold text-rose-400' : 'text-zinc-500' }}">{{ $task->failures }}</td>
-                            <td class="py-2 pl-4 text-right text-xs text-zinc-500">{{ $task->last_seen ? \Illuminate\Support\Carbon::createFromTimestamp($task->last_seen)->diffForHumans(short: true) : '—' }}</td>
+        @if ($schedulerExpectations->isNotEmpty())
+            <x-panel title="Critical scheduler tasks — current" subtitle="Explicitly configured expectations, independent of the selected historical range">
+                <p class="mb-4 text-xs text-zinc-500">A task is overdue only after its configured grace period and confirmed exported data through the deadline. Stale monitoring data leaves the current state unknown.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs text-zinc-500">
+                                <th class="pb-2 font-medium">Task</th>
+                                <th class="pb-2 pl-4 font-medium">Current state</th>
+                                <th class="pb-2 pl-4 text-right font-medium">Assessed deadline</th>
+                                <th class="pb-2 pl-4 text-right font-medium">Last success</th>
+                                <th class="pb-2 pl-4 text-right font-medium">Last failure</th>
+                                <th class="pb-2 pl-4 text-right font-medium">Next deadline</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-800/70">
+                            @foreach ($schedulerExpectations as $task)
+                                <tr wire:key="expected-task-{{ md5($task->key) }}">
+                                    <td class="py-2 pr-3"><x-key-cell :value="$task->key" /></td>
+                                    <td class="py-2 pl-4 text-xs {{ in_array($task->status, ['failed', 'overdue'], true) ? 'font-semibold text-rose-400' : ($task->status === 'succeeded' ? 'text-emerald-400' : 'text-zinc-400') }}" title="{{ $task->reason }}">{{ match ($task->status) { 'overdue' => 'Overdue', 'failed' => 'Failed', 'succeeded' => 'Succeeded', 'awaiting_first_run' => 'Awaiting first run', 'awaiting_data' => 'Awaiting data', default => 'Unknown' } }}</td>
+                                    @foreach (['deadline', 'last_success', 'last_failure', 'next_deadline'] as $timestamp)
+                                        <td class="whitespace-nowrap py-2 pl-4 text-right text-xs text-zinc-500">{{ $task->{$timestamp} !== null ? \Illuminate\Support\Carbon::createFromTimestamp($task->{$timestamp})->timezone(config('app.timezone'))->format('d.m H:i:s T') : '—' }}</td>
+                                    @endforeach
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-panel>
+        @endif
+        <x-panel title="Scheduler" subtitle="Recorded outcomes in this range; latest failing tasks appear first">
+            <p class="mb-4 text-xs text-zinc-500">Last outcomes show the start of a {{ $range === '7d' || $range === '30d' ? '1 hour' : '5 minute' }} bucket. Outcomes in the same bucket have no known order. Runtime averages include runs with a recorded duration.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-xs text-zinc-500">
+                            <th class="pb-2 font-medium">Task</th>
+                            <th class="pb-2 pl-4 font-medium">Latest outcome</th>
+                            <th class="pb-2 pl-4 text-right font-medium">Successes</th>
+                            <th class="pb-2 pl-4 text-right font-medium">Failures</th>
+                            <th class="pb-2 pl-4 text-right font-medium">Avg</th>
+                            <th class="pb-2 pl-4 text-right font-medium">Max</th>
+                            <th class="pb-2 pl-4 text-right font-medium">Last success bucket</th>
+                            <th class="pb-2 pl-4 text-right font-medium">Last failure bucket</th>
                         </tr>
-                    @empty
-                        <tr><td colspan="6" class="py-3 text-sm text-zinc-600">No scheduled task runs in this range.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-800/70">
+                        @forelse ($scheduledTasks as $task)
+                            <tr wire:key="task-{{ md5($task->key) }}">
+                                <td class="py-2 pr-3"><x-key-cell :value="$task->key" /></td>
+                                <td class="py-2 pl-4 text-xs {{ $task->status === 'succeeded' ? 'text-emerald-400' : 'font-semibold text-rose-400' }}">{{ match ($task->status) { 'failed' => 'Failed', 'failure_recorded' => 'Failure recorded', default => 'Succeeded' } }}</td>
+                                <td class="py-2 pl-4 text-right tabular-nums text-zinc-300">{{ $task->successes }}</td>
+                                <td class="py-2 pl-4 text-right tabular-nums {{ $task->failures > 0 ? 'font-semibold text-rose-400' : 'text-zinc-500' }}">{{ $task->failures }}</td>
+                                <td class="py-2 pl-4 text-right tabular-nums text-zinc-400">{{ $task->avg !== null ? round($task->avg / 1000, 1).' s' : '—' }}</td>
+                                <td class="py-2 pl-4 text-right tabular-nums text-zinc-400">{{ $task->max !== null ? round($task->max / 1000, 1).' s' : '—' }}</td>
+                                <td class="whitespace-nowrap py-2 pl-4 text-right text-xs text-zinc-500">{{ $task->last_success !== null ? \Illuminate\Support\Carbon::createFromTimestamp($task->last_success)->timezone(config('app.timezone'))->format('d.m H:i T') : '—' }}</td>
+                                <td class="whitespace-nowrap py-2 pl-4 text-right text-xs text-zinc-500">{{ $task->last_failure !== null ? \Illuminate\Support\Carbon::createFromTimestamp($task->last_failure)->timezone(config('app.timezone'))->format('d.m H:i T') : '—' }}</td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="8" class="py-3 text-sm text-zinc-600">No scheduled task runs in this range.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            @if ($scheduledTasks->hasPages())
+                <div class="mt-4">{{ $scheduledTasks->links(data: ['scrollTo' => false]) }}</div>
+            @endif
         </x-panel>
 
         {{-- Exceptions --}}
@@ -277,7 +327,7 @@
                         </div>
                     </a>
                 @empty
-                    <p class="py-3 text-sm text-zinc-600">{{ $showResolvedExceptions ? 'No exceptions recorded. 🎉' : 'No open exceptions. 🎉' }}</p>
+                    <p class="py-3 text-sm text-zinc-600">{{ $showResolvedExceptions ? 'No exception records received in this view.' : 'No open exception records in this view.' }} Missing records do not confirm recovery.</p>
                 @endforelse
             </div>
         </x-panel>

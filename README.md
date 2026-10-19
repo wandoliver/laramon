@@ -1,6 +1,6 @@
 # LaraMon
 
-![Release](https://img.shields.io/badge/release-v0.3.1-blue)
+![Release](https://img.shields.io/badge/release-v0.4.0-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Self-hosted fleet monitoring for Laravel applications — a central hub that every instance you operate reports into. Inspired by [Laravel Nightwatch](https://nightwatch.laravel.com), built for teams who want their telemetry on their own infrastructure.
@@ -23,9 +23,9 @@ Each monitored application runs [Laravel Pulse](https://pulse.laravel.com) local
 
 **What you get per instance:** request throughput & latency per route, slow queries, slow jobs & outgoing requests, queue depth & failures, scheduled task runs/runtimes/failures, exception trends (grouped by class + location), cache hit ratio, **active users** (who is using the app right now, with online indicators) — and any **business metrics** the app registers (gauges & counters), which appear on the dashboard automatically.
 
-**Alerts:** threshold rules over any collected metric — error rate, queue backlog, slow requests, business gauges, or plain "instance silent for N minutes" — evaluated every minute with breach/recovery notifications delivered to **Microsoft Teams** (Workflows webhooks, Adaptive Cards). Cooldowns stop flapping metrics from spamming the channel.
+**Alerts:** threshold rules over any collected metric — error rate, queue backlog, slow requests, business gauges, "instance silent for N minutes", or missing/incomplete monitoring data — evaluated every minute with breach/recovery notifications delivered to a configured **Microsoft Teams** Workflows webhook. Missing, stale, or partially exported data cannot automatically resolve an incident. Cooldowns stop flapping metrics from spamming the channel. No rule or webhook is created automatically.
 
-**Drill-downs:** exceptions, slow queries, and slow requests are clickable. The agent captures the latest occurrences per fingerprint — exception message, stack trace, request URL, slow-query SQL, duration, resource timings, and safe `context.*` metadata — so you can triage straight from the hub. Deliberately excluded: request payloads and query bindings, so user data never leaves the instance. Deeper diagnostics stay in Sentry.
+**Drill-downs:** exceptions, slow queries, and slow requests are clickable. The agent sends the latest occurrences per fingerprint to your self-hosted hub — exception message, stack trace, request URL, slow-query SQL, duration, resource timings, and safe `context.*` metadata — so you can triage straight from the dashboard. Request payloads and query bindings are excluded.
 
 **Design choices, deliberately boring:** pre-aggregated snapshots instead of raw event streaming; one wide time-series table; idempotent batches (retries are always safe); the agent never throws — a dead hub can never take a client application down.
 
@@ -90,13 +90,22 @@ MonitorAgent::resolveUsersUsing(fn (array $ids) => User::whereIn('id', $ids)->ge
 
 Disable the feature entirely with `MONITOR_AGENT_TRACK_USERS=false`.
 
+### Scheduled tasks and data flow
+
+The Scheduler table includes successful and failed runs, including tasks with only failures. Background tasks count when they finish, with their actual exit status. Critical, named tasks can opt in to expected-run monitoring through `expected_scheduled_tasks` in the agent configuration.
+
+The instance's **Monitoring data flow** panel separates heartbeat freshness, accepted exports, and confirmed data completeness. A recent heartbeat alone cannot establish health. The agent confirms only settled, fully exported five-minute intervals from supported, fully sampled Pulse recorders; Redis or custom ingest/storage pipelines remain unverified.
+
+See [Monitoring data flow and scheduled tasks](docs/monitoring-data-flow.md) for configuration, alert behavior, upgrade order, and the initial warm-up period.
+
 ## Operations notes
 
-- **Health dots:** driven purely by heartbeats — green under 2 minutes, amber under 10, red beyond that. Heartbeats are sent by the instance's scheduler, so a red dot means the app *or its cron/scheduler* is down — both worth knowing.
+- **Health:** healthy requires a fresh heartbeat, accepted exports, and confirmed data completeness. Unknown or stale data cannot establish recovery; an old agent can still export history while its completeness stays unverified. Heartbeats come from the instance's scheduler, so stale heartbeats can indicate an application or scheduler outage.
 - **Retention:** 5-minute buckets are kept 7 days, hourly rollups 90 days, occurrence samples 14 days (max 20 per fingerprint).
 - **Token rotation:** rotating a token (dashboard → Instances) keeps the old one valid for 7 days.
 - **Outages:** if the hub is unreachable, the agent holds its watermark and retries next run. Pulse trims fine-grained data after ~1 hour, so longer outages appear as a marked data gap rather than silent flat-lines.
 - **Clocks:** instances should run NTP; the hub clamps wildly skewed buckets and flags observed skew.
+- **Upgrades:** deploy the hub first, then update agents. Keep the new Pulse type mappings when merging published configuration. Existing installations need no new database migration for the 0.4.0 scheduler/data-flow changes; use the [upgrade checklist](docs/install.md#upgrading-to-040).
 
 ## Development
 

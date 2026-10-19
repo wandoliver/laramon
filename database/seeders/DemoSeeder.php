@@ -2,14 +2,19 @@
 
 namespace Database\Seeders;
 
+use App\Models\AlertEvent;
+use App\Models\AlertRule;
 use App\Models\ExceptionGroup;
 use App\Models\Instance;
 use App\Models\MetricBucket;
 use App\Models\User;
+use App\Support\Histogram;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * Development-only: seeds a small fleet with a week of plausible-looking
@@ -36,12 +41,12 @@ class DemoSeeder extends Seeder
         foreach ($fleet as $config) {
             $instance = Instance::factory()->create([
                 'name' => $config['name'],
-                'slug' => \Illuminate\Support\Str::slug($config['name']),
+                'slug' => Str::slug($config['name']),
                 'environment' => str_contains($config['name'], 'Staging') ? 'staging' : 'production',
                 'last_heartbeat_at' => $config['heartbeat'],
                 'last_ingest_at' => $config['heartbeat'],
                 'meta' => [
-                    'agent_version' => '0.3.1',
+                    'agent_version' => '0.4.0',
                     'app_version' => '2.4.'.random_int(0, 3),
                     'php_version' => '8.4.21',
                     'laravel_version' => '13.15.0',
@@ -61,7 +66,7 @@ class DemoSeeder extends Seeder
 
     private function seedAlerts(): void
     {
-        $rule = \App\Models\AlertRule::query()->create([
+        $rule = AlertRule::query()->create([
             'name' => 'High error rate',
             'instance_id' => null,
             'metric_type' => 'exception',
@@ -77,7 +82,7 @@ class DemoSeeder extends Seeder
         $instances = Instance::query()->orderBy('id')->limit(2)->get();
 
         if ($instances->count() === 2) {
-            \App\Models\AlertEvent::query()->create([
+            AlertEvent::query()->create([
                 'alert_rule_id' => $rule->id,
                 'instance_id' => $instances[1]->id,
                 'value' => 42,
@@ -85,7 +90,7 @@ class DemoSeeder extends Seeder
                 'notified' => true,
             ]);
 
-            \App\Models\AlertEvent::query()->create([
+            AlertEvent::query()->create([
                 'alert_rule_id' => $rule->id,
                 'instance_id' => $instances[0]->id,
                 'value' => 23,
@@ -133,10 +138,10 @@ class DemoSeeder extends Seeder
 
                 // Per-route latency histogram correlated with the avg above.
                 $bulk = max(1, (int) round($count * 0.8));
-                $this->bucket($instance->id, 'request_hist', $route.'|'.\App\Support\Histogram::binFor($avg), $t, $bulk);
+                $this->bucket($instance->id, 'request_hist', $route.'|'.Histogram::binFor($avg), $t, $bulk);
 
                 if ($count - $bulk > 0) {
-                    $this->bucket($instance->id, 'request_hist', $route.'|'.\App\Support\Histogram::binFor($avg * 3), $t, $count - $bulk);
+                    $this->bucket($instance->id, 'request_hist', $route.'|'.Histogram::binFor($avg * 3), $t, $count - $bulk);
                 }
             }
 
@@ -165,7 +170,6 @@ class DemoSeeder extends Seeder
             if ($t >= $spikeStart && $t < $spikeEnd && $traffic >= 0.5) {
                 $this->bucket($instance->id, 'exception', md5($spikeClass[0].'|'.$spikeClass[1]), $t, mt_rand(2, 9));
             }
-
 
             foreach ($users as $i => $user) {
                 if ($t === $lastClosed && $i < 2) {
@@ -267,8 +271,8 @@ class DemoSeeder extends Seeder
                 'fingerprint' => md5($spikeClass[0].'|'.$spikeClass[1]),
                 'class' => $spikeClass[0],
                 'location' => $spikeClass[1],
-                'first_seen_at' => \Illuminate\Support\Carbon::createFromTimestamp($spikeStart),
-                'last_seen_at' => \Illuminate\Support\Carbon::createFromTimestamp($spikeEnd),
+                'first_seen_at' => Carbon::createFromTimestamp($spikeStart),
+                'last_seen_at' => Carbon::createFromTimestamp($spikeEnd),
                 'total_count' => mt_rand(150, 600),
             ]);
         }

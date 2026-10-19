@@ -85,8 +85,21 @@ class AlertTest extends TestCase
 
         $this->artisan('monitor:evaluate-alerts');
 
-        // Errors stop: drop the breach data out of the window.
-        MetricBucket::query()->delete();
+        // The breach ages out, then the agent confirms the whole quiet window.
+        $this->travel(20)->minutes();
+        $through = (int) floor((now()->getTimestamp() - 60) / 300) * 300;
+        $instance->forceFill([
+            'last_heartbeat_at' => now(),
+            'last_ingest_at' => now(),
+            'meta' => ['data_flow' => [
+                'version' => 1,
+                'covered_from' => $through - 900,
+                'covered_through' => $through,
+                'types' => ['exception'],
+                'confirmed_at' => now()->getTimestamp(),
+                'clock_skew_seconds' => 0,
+            ]],
+        ])->save();
 
         $this->artisan('monitor:evaluate-alerts');
 

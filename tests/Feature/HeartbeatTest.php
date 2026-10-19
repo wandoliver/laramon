@@ -30,7 +30,7 @@ class HeartbeatTest extends TestCase
         $this->assertNotNull($instance->last_heartbeat_at);
         $this->assertSame('2.4.0', $instance->meta['app_version']);
         $this->assertSame(14, $instance->meta['queue']['pending']);
-        $this->assertSame('healthy', $instance->health());
+        $this->assertSame('unknown', $instance->health()); // A heartbeat alone cannot confirm data completeness.
     }
 
     public function test_heartbeat_requires_token(): void

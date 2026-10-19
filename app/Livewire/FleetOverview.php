@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use App\Models\AlertEvent;
 use App\Models\Instance;
 use App\Services\BucketQuery;
 use Illuminate\Support\Collection;
@@ -35,9 +36,20 @@ class FleetOverview extends Component
      */
     private function card(Instance $instance, BucketQuery $buckets, int $from, int $to): array
     {
+        $flow = $instance->dataFlow();
+        if ($flow['state'] === 'healthy') {
+            // Verified totals stop at the acknowledged boundary. The open
+            // tail must never be presented as a confirmed zero-error period.
+            $to = $flow['coverage']['through'] - 1;
+            $from = $flow['coverage']['through'] - 86400;
+        }
+        $covered = $flow['state'] === 'healthy'
+            && is_int($flow['coverage']['from']) && $flow['coverage']['from'] <= $from
+            && is_int($flow['coverage']['through']) && $flow['coverage']['through'] > $to;
+        $verified = fn (string $type): bool => $covered && in_array($type, $flow['coverage']['types'], true);
         $exceptions = $buckets->series($instance->id, 'exception', null, $from, $to, 48);
         $sparkStep = $buckets->step($from, $to, 48);
-        $openAlerts = \App\Models\AlertEvent::query()
+        $openAlerts = AlertEvent::query()
             ->where('instance_id', $instance->id)
             ->whereNull('resolved_at')
             ->count();
@@ -53,6 +65,11 @@ class FleetOverview extends Component
         return [
             'instance' => $instance,
             'health' => $instance->health(),
+            'data_flow' => $flow,
+            'totals_through' => $flow['state'] === 'healthy' ? $flow['coverage']['through'] : null,
+            'requests_verified' => $gap->count === 0 && $verified('request'),
+            'exceptions_verified' => $gap->count === 0 && $verified('exception'),
+            'failed_jobs_verified' => $gap->count === 0 && $verified('job:failed'),
             'heartbeat_age' => $instance->last_heartbeat_at?->diffForHumans(short: true),
             'exception_count' => $exceptions->sum('count'),
             'exception_spark' => $this->sparkValues($exceptions, $from, $to, $sparkStep),
@@ -61,6 +78,9 @@ class FleetOverview extends Component
             'request_max' => $requests->max,
             'failed_jobs' => $failedJobs->count,
             'queue' => $instance->meta['queue'] ?? null,
+            'queue_verified' => $flow['heartbeat']['state'] === 'healthy'
+                && ($instance->meta['queue_available'] ?? false) === true
+                && ($instance->meta['queue_reported_at'] ?? null) === $instance->last_heartbeat_at?->getTimestamp(),
             'app_version' => $instance->meta['app_version'] ?? null,
             'has_gap' => $gap->count > 0,
             'open_alerts' => $openAlerts,

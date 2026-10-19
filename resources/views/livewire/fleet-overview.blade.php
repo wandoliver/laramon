@@ -42,10 +42,24 @@
                         @endif
                     </div>
 
+                    <div class="mt-3 border-t border-zinc-800/80 pt-3">
+                        <x-data-flow-status :flow="$card['data_flow']" />
+                        @if ($card['totals_through'] !== null)
+                            <p class="mt-2 text-xs text-zinc-500">24-hour totals through {{ \Illuminate\Support\Carbon::createFromTimestamp($card['totals_through'])->format('d.m H:i') }} UTC.</p>
+                        @endif
+                        @if ($card['data_flow']['state'] !== 'healthy')
+                            <p class="mt-2 text-xs text-amber-400">{{ $card['data_flow']['reason'] }} Missing data cannot confirm recovery.</p>
+                        @endif
+                        @if (! $card['requests_verified'] || ! $card['exceptions_verified'] || ! $card['failed_jobs_verified'])
+                            <p class="mt-2 text-xs text-zinc-500">Partial history: observed totals may be incomplete. Missing records do not confirm zero errors.</p>
+                        @endif
+                    </div>
+
                     <div class="mt-4 grid grid-cols-3 gap-3 border-t border-zinc-800/80 pt-4 text-sm">
                         <div>
                             <p class="text-xs text-zinc-500">Requests</p>
-                            <p class="mt-0.5 font-semibold tabular-nums">{{ Number::abbreviate($card['request_count']) }}</p>
+                            <p class="mt-0.5 font-semibold tabular-nums">{{ $card['requests_verified'] || $card['request_count'] > 0 ? Number::abbreviate($card['request_count']) : '—' }}</p>
+                            @unless ($card['requests_verified']) <p class="text-xs text-amber-400">{{ $card['request_count'] > 0 ? 'observed · partial' : 'unavailable' }}</p> @endunless
                             <p class="text-xs tabular-nums text-zinc-500">
                                 @if ($card['request_avg'] !== null) {{ round($card['request_avg']) }} ms avg @else — @endif
                             </p>
@@ -53,16 +67,18 @@
                         <div>
                             <p class="text-xs text-zinc-500">Errors</p>
                             <p class="mt-0.5 font-semibold tabular-nums {{ $card['exception_count'] > 0 ? 'text-rose-400' : '' }}">
-                                {{ Number::abbreviate($card['exception_count']) }}
+                                {{ $card['exceptions_verified'] || $card['exception_count'] > 0 ? Number::abbreviate($card['exception_count']) : '—' }}
                             </p>
+                            @unless ($card['exceptions_verified']) <p class="text-xs text-amber-400">{{ $card['exception_count'] > 0 ? 'observed · partial' : 'unavailable' }}</p> @endunless
                             <div class="mt-1 text-rose-400/80">{!! \App\Support\Sparkline::render($card['exception_spark'], 'currentColor', 88, 20) !!}</div>
                         </div>
                         <div>
                             <p class="text-xs text-zinc-500">Queue</p>
-                            <p class="mt-0.5 font-semibold tabular-nums">{{ $card['queue']['pending'] ?? '—' }}</p>
+                            <p class="mt-0.5 font-semibold tabular-nums">{{ $card['queue_verified'] ? ($card['queue']['pending'] ?? '—') : '—' }}</p>
                             <p class="text-xs tabular-nums {{ ($card['queue']['failed'] ?? 0) > 0 || $card['failed_jobs'] > 0 ? 'text-rose-400' : 'text-zinc-500' }}">
-                                {{ $card['queue']['failed'] ?? $card['failed_jobs'] }} failed
+                                {{ $card['queue_verified'] && isset($card['queue']['failed']) ? $card['queue']['failed'] : ($card['failed_jobs_verified'] || $card['failed_jobs'] > 0 ? $card['failed_jobs'] : '—') }} failed
                             </p>
+                            @unless ($card['failed_jobs_verified']) <p class="text-xs text-amber-400">failed-job history partial</p> @endunless
                         </div>
                     </div>
                 </a>

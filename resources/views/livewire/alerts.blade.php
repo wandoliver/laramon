@@ -37,12 +37,14 @@
                     <select wire:model.live="metric_type"
                             class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500">
                         @foreach ($metricTypes as $type)
-                            <option value="{{ $type }}">{{ $type === 'heartbeat' ? 'heartbeat (instance down)' : $type }}</option>
+                            <option value="{{ $type }}">{{ match ($type) { 'heartbeat' => 'heartbeat (instance down)', 'data_flow' => 'data flow (missing, stale or incomplete)', default => $type } }}</option>
                         @endforeach
                     </select>
                 </div>
 
-                @if ($metric_type === 'heartbeat')
+                @if ($metric_type === 'data_flow')
+                    <p class="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-400">Alerts when heartbeat, accepted exports or confirmed coverage are missing, stale or incomplete. Recovery requires confirmed fresh data flow.</p>
+                @elseif ($metric_type === 'heartbeat')
                     <div>
                         <label class="mb-1 block text-sm text-zinc-400">Alert after silent minutes</label>
                         <input type="number" wire:model="threshold" placeholder="10"

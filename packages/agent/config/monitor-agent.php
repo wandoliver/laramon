@@ -1,5 +1,7 @@
 <?php
 
+use LaraMon\Agent\Collectors\QueueBacklogCollector;
+
 return [
 
     /*
@@ -36,10 +38,15 @@ return [
     // Reported in heartbeats so the hub can show what is deployed.
     'app_version' => env('MONITOR_APP_VERSION'),
 
+    // Explicit task NAME => runtime/export grace in seconds (900..604800).
+    // Tasks with conditional filters should only be opted in if every due run
+    // is expected; the agent never executes filters to inspect a schedule.
+    'expected_scheduled_tasks' => [],
+
     // Business metric collector classes (implementing BusinessMetricCollector).
     // Closures can also be registered at runtime via the MonitorAgent facade.
     'collectors' => [
-        LaraMon\Agent\Collectors\QueueBacklogCollector::class,
+        QueueBacklogCollector::class,
     ],
 
     // Pulse aggregate types exported to the hub. Keys are Pulse types,
@@ -61,6 +68,8 @@ return [
         'failed' => 'job:failed',
         'scheduled_task' => 'scheduled_task',
         'scheduled_task_failed' => 'scheduled_task:failed',
+        'scheduled_task_last_success' => 'scheduled_task:last_success',
+        'scheduled_task_last_failure' => 'scheduled_task:last_failure',
     ],
 
 ];

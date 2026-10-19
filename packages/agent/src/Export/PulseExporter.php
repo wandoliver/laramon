@@ -2,6 +2,7 @@
 
 namespace LaraMon\Agent\Export;
 
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use LaraMon\Agent\Collectors\CollectorRegistry;
 use LaraMon\Agent\Support\Counter;
@@ -32,6 +33,7 @@ class PulseExporter
      *     samples: list<array<string, mixed>>,
      *     sample_ids: list<int>,
      *     watermark: int|null,
+     *     read_from: int,
      * }
      */
     public function build(): array
@@ -105,6 +107,29 @@ class PulseExporter
             };
 
             $metrics[$id] = $metric;
+
+            // Background completions contribute to the outcome count but have
+            // no runtime. Keep the timed sample count alongside the legacy
+            // metric so their successes do not dilute the displayed average.
+            $timedCount = (int) ($row->count ?? 0);
+
+            if ($row->type === 'scheduled_task' && $row->aggregate === 'avg' && $timedCount > 0) {
+                $runtimeId = 'scheduled_task:runtime'."\0".$key."\0".$bucketStart;
+                $runtime = $metrics[$runtimeId] ?? [
+                    'type' => 'scheduled_task:runtime',
+                    'key' => $key,
+                    'bucket_start' => $bucketStart,
+                    'bucket_seconds' => $bucketSeconds,
+                    'count' => 0,
+                    'sum' => null,
+                    'min' => null,
+                    'max' => null,
+                ];
+
+                $runtime['count'] += $timedCount;
+                $runtime['sum'] = ($runtime['sum'] ?? 0) + $value * $timedCount;
+                $metrics[$runtimeId] = $runtime;
+            }
         }
 
         $buckets = $this->labelActiveUsers(array_values($metrics));
@@ -193,6 +218,7 @@ class PulseExporter
             ])->all()),
             'sample_ids' => array_values($samples->pluck('id')->map(fn ($id) => (int) $id)->all()),
             'watermark' => $newWatermark > $watermark ? $newWatermark : null,
+            'read_from' => $watermark,
         ];
     }
 
@@ -261,7 +287,7 @@ class PulseExporter
         return [$type, mb_substr($key, 0, 500)];
     }
 
-    protected function pulseConnection(): \Illuminate\Database\Connection
+    protected function pulseConnection(): Connection
     {
         return DB::connection(config('pulse.storage.database.connection'));
     }

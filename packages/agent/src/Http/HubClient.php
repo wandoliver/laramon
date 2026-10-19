@@ -15,14 +15,14 @@ class HubClient
 {
     public const SCHEMA_VERSION = 1;
 
-    public const AGENT_VERSION = '0.3.1';
+    public const AGENT_VERSION = '0.4.0';
 
     /**
      * @param  list<array<string, mixed>>  $buckets
      * @param  list<array<string, mixed>>  $exceptions
      * @param  list<array<string, mixed>>  $samples
      */
-    public function ingest(array $buckets, array $exceptions, array $samples = [], ?string $batchUuid = null): bool
+    public function ingest(array $buckets, array $exceptions, array $samples = [], ?string $batchUuid = null, ?array $coverage = null): bool
     {
         $batchUuid ??= (string) Str::uuid();
 
@@ -38,6 +38,7 @@ class HubClient
                     'buckets' => $buckets,
                     'exceptions' => $exceptions,
                     'samples' => $samples,
+                    ...($coverage === null ? [] : ['coverage' => $coverage]),
                 ]);
 
             if (! $response->successful()) {

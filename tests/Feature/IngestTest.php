@@ -88,6 +88,24 @@ class IngestTest extends TestCase
         $this->assertSame(1, MetricBucket::query()->where('instance_id', $other->id)->count());
     }
 
+    public function test_scheduler_runtime_and_exact_completion_metrics_use_the_existing_ingest_contract(): void
+    {
+        $start = (int) (floor(now()->subMinutes(10)->getTimestamp() / 300) * 300);
+        $payload = $this->payload([
+            'exceptions' => [],
+            'buckets' => [
+                ['type' => 'scheduled_task:runtime', 'key' => 'critical-sync', 'bucket_start' => $start, 'bucket_seconds' => 300, 'count' => 2, 'sum' => 6000, 'min' => null, 'max' => null],
+                ['type' => 'scheduled_task:last_success', 'key' => 'critical-sync', 'bucket_start' => $start, 'bucket_seconds' => 300, 'count' => 0, 'sum' => null, 'min' => null, 'max' => $start + 42],
+            ],
+        ]);
+        $this->ingest($payload)->assertOk()->assertJson(['accepted' => 2]);
+        $rows = MetricBucket::query()->where('instance_id', $this->instance->id)->get()->keyBy('type');
+        $this->assertSame(2, $rows['scheduled_task:runtime']->count);
+        $this->assertNull($rows['scheduled_task:runtime']->max);
+        $this->assertSame(0, $rows['scheduled_task:last_success']->count);
+        $this->assertEquals($start + 42, $rows['scheduled_task:last_success']->max);
+    }
+
     public function test_accepts_valid_payload(): void
     {
         $this->ingest($this->payload())

@@ -41,6 +41,14 @@ class Alerts extends Component
 
     public function save(): void
     {
+        if ($this->metric_type === AlertRule::TYPE_DATA_FLOW) {
+            $this->key = '';
+            $this->aggregate = 'count';
+            $this->operator = '>';
+            $this->threshold = '0';
+            $this->window_minutes = 5;
+        }
+
         $data = $this->validate([
             'name' => ['required', 'string', 'max:120'],
             'instance_id' => ['nullable', 'integer', 'exists:instances,id'],
@@ -169,7 +177,7 @@ class Alerts extends Component
             'rules' => AlertRule::query()->with('instance')->orderBy('name')->get(),
             'events' => AlertEvent::query()->with(['rule', 'instance', 'resolvedBy'])->orderByDesc('triggered_at')->limit(50)->get(),
             'instances' => Instance::query()->orderBy('name')->get(),
-            'metricTypes' => collect([AlertRule::TYPE_HEARTBEAT])
+            'metricTypes' => collect([AlertRule::TYPE_HEARTBEAT, AlertRule::TYPE_DATA_FLOW])
                 ->merge(DB::table('metric_buckets')->distinct()->orderBy('type')->pluck('type'))
                 ->unique()
                 ->values(),

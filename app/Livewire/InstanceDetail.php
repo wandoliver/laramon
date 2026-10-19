@@ -4,14 +4,19 @@ namespace App\Livewire;
 
 use App\Models\Instance;
 use App\Services\BucketQuery;
+use App\Services\ScheduledTaskQuery;
+use App\Services\SchedulerExpectations;
 use App\Support\Histogram;
 use App\Support\TimeRange;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 class InstanceDetail extends Component
 {
+    use WithPagination;
+
     public Instance $instance;
 
     #[Url]
@@ -28,14 +33,29 @@ class InstanceDetail extends Component
         $this->instance = $instance;
     }
 
-    public function render(BucketQuery $buckets)
+    public function updatedRange(): void
     {
+        $this->resetPage('tasksPage');
+    }
+
+    public function render(BucketQuery $buckets, ScheduledTaskQuery $tasks, SchedulerExpectations $expectations)
+    {
+        // A polling component must use current server-side metadata, rather
+        // than a model snapshot from its initial request.
+        $this->instance->refresh();
         $this->range = TimeRange::valid($this->range);
 
         $to = now()->getTimestamp();
         $from = $to - TimeRange::seconds($this->range);
+        $flow = $this->instance->dataFlow();
+        $rangeComplete = $flow['state'] === 'healthy'
+            && is_int($flow['coverage']['from']) && $flow['coverage']['from'] <= $from
+            && is_int($flow['coverage']['through']) && $flow['coverage']['through'] >= (int) (floor(($to - 60) / 300) * 300)
+            && $buckets->total($this->instance->id, 'counter:agent.export_gap_minutes', $from, $to)->count === 0;
 
         return view('livewire.instance-detail', [
+            'dataFlow' => $flow,
+            'requestsVerified' => $rangeComplete && in_array('request', $flow['coverage']['types'], true),
             'activeUsers' => $this->activeUsers($buckets, $from, $to),
             'requestsChart' => $this->requestsChart($buckets, $from, $to),
             'requestStats' => $this->requestStats($buckets, $from, $to),
@@ -45,7 +65,8 @@ class InstanceDetail extends Component
             'jobsChart' => $this->jobsChart($buckets, $from, $to),
             'queueChart' => $this->gaugeChart($buckets, 'gauge:queue.pending', 'Pending jobs', '#38bdf8', $from, $to),
             'slowJobs' => $buckets->topKeys($this->instance->id, 'slow_job', $from, $to, 'max', 10),
-            'scheduledTasks' => $this->scheduledTasks($buckets, $from, $to),
+            'scheduledTasks' => $tasks->paginate($this->instance->id, $from, $to, page: $this->getPage('tasksPage')),
+            'schedulerExpectations' => $expectations->current($this->instance),
             'exceptionsChart' => $this->exceptionsChart($buckets, $from, $to),
             'exceptionGroups' => $this->exceptionGroups($buckets, $from, $to),
             'business' => $this->business($buckets, $from, $to),
@@ -237,24 +258,6 @@ class InstanceDetail extends Component
             ->sortBy([['online', 'desc'], ['last_seen', 'desc']])
             ->values()
             ->take(30);
-    }
-
-    /**
-     * @return Collection<int, object>
-     */
-    private function scheduledTasks(BucketQuery $buckets, int $from, int $to): Collection
-    {
-        $tasks = $buckets->topKeys($this->instance->id, 'scheduled_task', $from, $to, 'count', 50);
-        $failures = $buckets->topKeys($this->instance->id, 'scheduled_task:failed', $from, $to, 'count', 50)
-            ->keyBy('key');
-        $lastSeen = $buckets->lastSeenPerKey($this->instance->id, 'scheduled_task', $from, $to);
-
-        return $tasks->map(function (object $task) use ($failures, $lastSeen) {
-            $task->failures = (int) ($failures[$task->key]->count ?? 0);
-            $task->last_seen = $lastSeen[$task->key] ?? null;
-
-            return $task;
-        });
     }
 
     /**

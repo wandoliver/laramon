@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AlertEvent;
 use App\Models\AlertRule;
 use App\Models\Instance;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -17,6 +18,7 @@ class AlertEvaluator
     public function __construct(
         protected BucketQuery $buckets,
         protected TeamsNotifier $teams,
+        protected DataFlowStatus $dataFlow,
     ) {}
 
     public function evaluate(): void
@@ -36,19 +38,15 @@ class AlertEvaluator
 
     protected function evaluateRuleForInstance(AlertRule $rule, Instance $instance): void
     {
-        $value = $this->currentValue($rule, $instance);
+        $observation = $this->currentObservation($rule, $instance);
+        ['value' => $value, 'complete' => $complete] = $observation;
 
-        if ($value === null) {
-            return; // No data — not a breach.
+        if ($value === null || ! is_finite($value) || ! is_finite($rule->threshold)
+            || ! in_array($rule->operator, AlertRule::OPERATORS, true)) {
+            return;
         }
 
-        $breached = match ($rule->operator) {
-            '>' => $value > $rule->threshold,
-            '>=' => $value >= $rule->threshold,
-            '<' => $value < $rule->threshold,
-            '<=' => $value <= $rule->threshold,
-            default => false,
-        };
+        $breached = $this->isBreached($rule, $value);
 
         $openEvent = AlertEvent::query()
             ->where('alert_rule_id', $rule->id)
@@ -57,11 +55,12 @@ class AlertEvaluator
             ->latest('triggered_at')
             ->first();
 
-        if ($breached && $openEvent === null) {
+        if ($breached && $openEvent === null && ($complete || $this->canBreachWithPartialData($rule, $value))) {
             $this->trigger($rule, $instance, $value);
         }
 
-        if (! $breached && $openEvent !== null) {
+        if (! $breached && $openEvent !== null && $complete
+            && ($observation['through'] ?? 0) > $openEvent->triggered_at->getTimestamp()) {
             $this->resolve($rule, $instance, $openEvent, $value);
         }
     }
@@ -121,23 +120,57 @@ class AlertEvaluator
     }
 
     /**
-     * The rule's current observed value, or null when there is nothing to
-     * evaluate (no data for value aggregates, or a never-seen instance).
+     * An observation may prove a breach before a full window is available.
+     * Only fresh, complete observations can prove recovery.
+     *
+     * @return array{value: ?float, complete: bool, through: ?int}
      */
-    protected function currentValue(AlertRule $rule, Instance $instance): ?float
+    protected function currentObservation(AlertRule $rule, Instance $instance): array
     {
+        $status = $this->dataFlow->snapshot($instance);
+        $healthy = $status['state'] === 'healthy';
+
+        if ($rule->isDataFlowRule()) {
+            return ['value' => $healthy ? 0.0 : 1.0, 'complete' => $healthy, 'through' => $status['coverage']['confirmed_at']];
+        }
+
         if ($rule->isHeartbeatRule()) {
             $age = $instance->heartbeatAgeSeconds();
 
-            return $age !== null ? round($age / 60, 2) : null;
+            return ['value' => $age !== null ? round($age / 60, 2) : null, 'complete' => $healthy, 'through' => $status['coverage']['confirmed_at']];
         }
 
-        $to = now()->getTimestamp();
-        $from = $to - $rule->window_minutes * 60;
+        $sampled = str_starts_with($rule->metric_type, 'gauge:') || str_starts_with($rule->metric_type, 'counter:');
+        $window = $this->dataFlow->window($instance, $rule->window_minutes, $sampled ? null : $rule->metric_type);
+        $now = now()->getTimestamp();
+        if ($window !== null) {
+            // A newer chunk may already prove another breach while its final
+            // confirmation is still pending. An older clean window cannot
+            // overrule that positive evidence or hide a new incident.
+            $recent = $this->valueInRange($rule, $instance, $now - $rule->window_minutes * 60, $now);
+            if ($recent !== null && is_finite($recent) && $this->canBreachWithPartialData($rule, $recent)
+                && $this->isBreached($rule, $recent)) {
+                return ['value' => $recent, 'complete' => false, 'through' => null];
+            }
+        }
+
+        $to = $window['to'] ?? $now;
+        $from = $window['from'] ?? $to - $rule->window_minutes * 60;
+        $complete = $window !== null && (! $sampled || $this->hasCompleteSamples($rule, $instance, $from, $to));
+        $value = $this->valueInRange($rule, $instance, $from, $to, $complete && ! $sampled);
+
+        return ['value' => $value, 'complete' => $complete, 'through' => $window['through'] ?? null];
+    }
+
+    protected function valueInRange(AlertRule $rule, Instance $instance, int $from, int $to, bool $allowEmptyCount = false): ?float
+    {
+        $series = $this->buckets->series($instance->id, $rule->metric_type, $rule->key, $from, $to);
+
+        if ($series->isEmpty()) {
+            return $allowEmptyCount && $rule->aggregate === 'count' ? 0.0 : null;
+        }
 
         if ($rule->key !== null) {
-            $series = $this->buckets->series($instance->id, $rule->metric_type, $rule->key, $from, $to);
-
             $value = match ($rule->aggregate) {
                 'count' => (float) $series->sum('count'),
                 'avg' => $series->avg('avg'),
@@ -150,18 +183,82 @@ class AlertEvaluator
             $value = $total->{$rule->aggregate} ?? null;
         }
 
-        // Counts are zero when nothing happened — that is a real observation
-        // (needed for "fewer than X" rules). Value metrics without data are
-        // not evaluated.
-        if ($value === null && $rule->aggregate === 'count') {
-            return 0.0;
+        return $value !== null ? (float) $value : null;
+    }
+
+    /** Business collectors can skip a metric; every bucket needs a real sample. */
+    protected function hasCompleteSamples(AlertRule $rule, Instance $instance, int $from, int $to): bool
+    {
+        if ($rule->key === null) {
+            return false;
         }
 
-        return $value !== null ? (float) $value : null;
+        $rows = DB::table('metric_buckets')
+            ->where('instance_id', $instance->id)
+            ->where('type', $rule->metric_type)
+            ->where('key_hash', md5($rule->key, true))
+            ->where('key', $rule->key)
+            ->where('bucket_seconds', 300)
+            ->whereBetween('bucket_start', [$from, $to])
+            ->get(['bucket_start', 'count', 'sum', 'min', 'max']);
+
+        if ($rows->count() !== (int) (($to + 1 - $from) / 300)) {
+            return false;
+        }
+
+        foreach ($rows as $row) {
+            if (((int) $row->bucket_start - $from) % 300 !== 0) {
+                return false;
+            }
+
+            $value = match ($rule->aggregate) {
+                'count' => $row->count,
+                'avg' => $row->count > 0 && $row->sum !== null ? $row->sum / $row->count : null,
+                'max' => $row->max,
+                'min' => $row->min,
+                default => null,
+            };
+
+            if ($value === null || ! is_numeric($value) || ! is_finite((float) $value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    protected function canBreachWithPartialData(AlertRule $rule, float $value): bool
+    {
+        if ($rule->isHeartbeatRule() || $rule->isDataFlowRule()) {
+            return true;
+        }
+
+        // Missing events can only increase the final count/max, or decrease min.
+        return match ($rule->aggregate) {
+            'count' => $value > 0 && in_array($rule->operator, ['>', '>='], true),
+            'max' => in_array($rule->operator, ['>', '>='], true),
+            'min' => in_array($rule->operator, ['<', '<='], true),
+            default => false,
+        };
+    }
+
+    protected function isBreached(AlertRule $rule, float $value): bool
+    {
+        return match ($rule->operator) {
+            '>' => $value > $rule->threshold,
+            '>=' => $value >= $rule->threshold,
+            '<' => $value < $rule->threshold,
+            '<=' => $value <= $rule->threshold,
+            default => false,
+        };
     }
 
     protected function formatValue(AlertRule $rule, float $value): string
     {
+        if ($rule->isDataFlowRule()) {
+            return $value === 0.0 ? 'Verified monitoring data flow' : 'Monitoring data flow is unverified or unhealthy';
+        }
+
         return $rule->isHeartbeatRule()
             ? round($value).' min since last heartbeat'
             : rtrim(rtrim(number_format($value, 2), '0'), '.')." ({$rule->aggregate}, last {$rule->window_minutes} min)";

@@ -2,14 +2,16 @@
 
 namespace App\Models;
 
+use App\Services\DataFlowStatus;
 use App\Support\InstanceToken;
+use Database\Factories\InstanceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Instance extends Model
 {
-    /** @use HasFactory<\Database\Factories\InstanceFactory> */
+    /** @use HasFactory<InstanceFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -106,18 +108,18 @@ class Instance extends Model
             return null;
         }
 
-        return (int) $this->last_heartbeat_at->diffInSeconds(now());
+        $age = (int) $this->last_heartbeat_at->diffInSeconds(now());
+
+        return $age >= 0 ? $age : null;
     }
 
     public function health(): string
     {
-        $age = $this->heartbeatAgeSeconds();
+        return $this->dataFlow()['state'];
+    }
 
-        return match (true) {
-            $age === null => 'unknown',
-            $age < 120 => 'healthy',
-            $age < 600 => 'degraded',
-            default => 'down',
-        };
+    public function dataFlow(): array
+    {
+        return app(DataFlowStatus::class)->snapshot($this);
     }
 }
