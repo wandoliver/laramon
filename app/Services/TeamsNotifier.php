@@ -64,8 +64,9 @@ class TeamsNotifier
             }
 
             return $response->successful();
-        } catch (\Throwable $e) {
-            Log::warning("Teams notification failed: {$e->getMessage()}");
+        } catch (\Throwable) {
+            // Transport exceptions can contain the secret webhook URL.
+            Log::warning('Teams notification failed.');
 
             return false;
         }

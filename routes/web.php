@@ -1,11 +1,15 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Livewire\AlertEmailTemplates;
+use App\Livewire\Alerts;
 use App\Livewire\ExceptionDetail;
 use App\Livewire\FleetOverview;
 use App\Livewire\InstanceDetail;
 use App\Livewire\Instances;
 use App\Livewire\QueryDetail;
+use App\Livewire\RequestDetail;
+use App\Livewire\RouteDetail;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -22,10 +26,11 @@ Route::middleware('auth')->group(function () {
         ->where('fingerprint', '[a-f0-9]{32}')->name('instance.exception');
     Route::get('/instances/{instance:slug}/queries/{hash}', QueryDetail::class)
         ->where('hash', '[a-f0-9]{32}')->name('instance.query');
-    Route::get('/instances/{instance:slug}/requests/{hash}', \App\Livewire\RequestDetail::class)
+    Route::get('/instances/{instance:slug}/requests/{hash}', RequestDetail::class)
         ->where('hash', '[a-f0-9]{32}')->name('instance.request');
-    Route::get('/instances/{instance:slug}/routes/{hash}', \App\Livewire\RouteDetail::class)
+    Route::get('/instances/{instance:slug}/routes/{hash}', RouteDetail::class)
         ->where('hash', '[a-f0-9]{32}')->name('instance.route');
-    Route::get('/alerts', \App\Livewire\Alerts::class)->name('alerts');
+    Route::get('/alerts', Alerts::class)->name('alerts');
+    Route::get('/settings/alert-email', AlertEmailTemplates::class)->name('alerts.email-templates');
     Route::get('/settings/instances', Instances::class)->name('instances.settings');
 });

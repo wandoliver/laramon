@@ -17,7 +17,7 @@ class AlertEvaluator
 {
     public function __construct(
         protected BucketQuery $buckets,
-        protected TeamsNotifier $teams,
+        protected AlertNotificationSender $notifications,
         protected DataFlowStatus $dataFlow,
     ) {}
 
@@ -79,44 +79,76 @@ class AlertEvaluator
             return;
         }
 
-        $notified = $this->teams->send(
-            $rule->webhook_url,
-            "🔴 {$rule->name} — {$instance->name}",
-            'attention',
-            [
+        // Persist the incident before attempting any external notification.
+        $event = AlertEvent::query()->create([
+            'alert_rule_id' => $rule->id,
+            'instance_id' => $instance->id,
+            'value' => $value,
+            'triggered_at' => now(),
+            'notified' => false,
+            'notification_status' => ['triggered' => $this->notifications->pending($rule)],
+        ]);
+
+        $status = $this->notifications->send($rule, 'triggered', [
+            'title' => "🔴 {$rule->name} — {$instance->name}",
+            'tone' => 'attention',
+            'facts' => [
                 'Instance' => $instance->name,
                 'Condition' => $rule->describeCondition(),
                 'Observed' => $this->formatValue($rule, $value),
                 'Triggered' => now()->format('d.m.Y H:i').' UTC',
             ],
-            route('instance', $instance),
-        );
-
-        AlertEvent::query()->create([
-            'alert_rule_id' => $rule->id,
-            'instance_id' => $instance->id,
-            'value' => $value,
-            'triggered_at' => now(),
-            'notified' => $notified,
+            'link' => route('instance', $instance),
+            'variables' => $this->emailVariables($rule, $instance, $event, $value, 'Alert'),
         ]);
+
+        $event->forceFill([
+            'notified' => AlertNotificationSender::allConfiguredSent($status),
+            'notification_status' => ['triggered' => $status],
+        ]);
+        $event->save();
     }
 
     protected function resolve(AlertRule $rule, Instance $instance, AlertEvent $event, float $value): void
     {
-        $event->forceFill(['resolved_at' => now()])->save();
+        // Before channel-specific statuses existed, every notification was
+        // a Teams attempt. Preserve that historical result on recovery.
+        $delivery = $event->notification_status ?? ['triggered' => [
+            'teams' => $event->notified ? 'sent' : 'failed', 'email' => 'disabled',
+        ]];
+        $event->forceFill([
+            'resolved_at' => now(),
+            'notification_status' => [...$delivery, 'resolved' => $this->notifications->pending($rule)],
+        ])->save();
 
-        $this->teams->send(
-            $rule->webhook_url,
-            "🟢 Resolved: {$rule->name} — {$instance->name}",
-            'good',
-            [
+        $status = $this->notifications->send($rule, 'resolved', [
+            'title' => "🟢 Resolved: {$rule->name} — {$instance->name}",
+            'tone' => 'good',
+            'facts' => [
                 'Instance' => $instance->name,
                 'Condition' => $rule->describeCondition(),
                 'Now' => $this->formatValue($rule, $value),
                 'Was triggered' => $event->triggered_at->format('d.m.Y H:i').' UTC',
             ],
-            route('instance', $instance),
-        );
+            'link' => route('instance', $instance),
+            'variables' => $this->emailVariables($rule, $instance, $event, $value, 'Resolved'),
+        ]);
+
+        $event->forceFill(['notification_status' => [...$delivery, 'resolved' => $status]])->save();
+    }
+
+    /** @return array<string, string> */
+    private function emailVariables(AlertRule $rule, Instance $instance, AlertEvent $event, float $value, string $status): array
+    {
+        return [
+            'app_name' => (string) config('app.name'), 'status' => $status,
+            'rule_name' => $rule->name, 'instance_name' => $instance->name,
+            'condition' => $rule->describeCondition(), 'value' => $this->formatValue($rule, $value),
+            'previous_value' => $status === 'Resolved' ? $this->formatValue($rule, $event->value) : '',
+            'triggered_at' => $event->triggered_at->copy()->utc()->format('d.m.Y H:i').' UTC',
+            'resolved_at' => $event->resolved_at ? $event->resolved_at->copy()->utc()->format('d.m.Y H:i').' UTC' : '',
+            'dashboard_url' => route('instance', $instance),
+        ];
     }
 
     /**

@@ -5,8 +5,10 @@ namespace App\Livewire;
 use App\Models\AlertEvent;
 use App\Models\AlertRule;
 use App\Models\Instance;
-use App\Services\TeamsNotifier;
+use App\Services\AlertNotificationSender;
+use App\Services\DataFlowStatus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Livewire\Component;
 
 class Alerts extends Component
@@ -33,6 +35,8 @@ class Alerts extends Component
 
     public string $webhook_url = '';
 
+    public string $email_recipients = '';
+
     public ?string $testResult = null;
 
     public ?int $resolvingEventId = null;
@@ -41,6 +45,8 @@ class Alerts extends Component
 
     public function save(): void
     {
+        $this->webhook_url = trim($this->webhook_url);
+
         if ($this->metric_type === AlertRule::TYPE_DATA_FLOW) {
             $this->key = '';
             $this->aggregate = 'count';
@@ -59,10 +65,39 @@ class Alerts extends Component
             'threshold' => ['required', 'numeric'],
             'window_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'cooldown_minutes' => ['required', 'integer', 'min:0', 'max:1440'],
-            'webhook_url' => ['required', 'url', 'max:500'],
+            'webhook_url' => ['nullable', 'url:http,https', 'max:500'],
+            'email_recipients' => ['nullable', 'string', 'max:3000', function (string $attribute, mixed $value, \Closure $fail): void {
+                $input = str_replace("\r\n", "\n", $value);
+
+                if (preg_match('/[\x00-\x09\x0B-\x1F\x7F<>]/', $input)) {
+                    $fail('Enter plain email addresses without display names or control characters.');
+
+                    return;
+                }
+
+                $addresses = $this->parseEmailRecipients($input);
+
+                if (count($addresses) > 10) {
+                    $fail('Enter no more than 10 email recipients.');
+
+                    return;
+                }
+
+                foreach ($addresses as $address) {
+                    if (filter_var($address, FILTER_VALIDATE_EMAIL) === false || preg_match('/\s/', $address) || Validator::make(['address' => $address], [
+                        'address' => ['required', 'string', 'max:254', 'email:rfc'],
+                    ])->fails()) {
+                        $fail('Enter valid email addresses separated by commas, semicolons or new lines.');
+
+                        return;
+                    }
+                }
+            }],
         ]);
 
         $data['key'] = $data['key'] !== '' ? $data['key'] : null;
+        $data['webhook_url'] = $data['webhook_url'] !== '' ? $data['webhook_url'] : null;
+        $data['email_recipients'] = $this->parseEmailRecipients($data['email_recipients'] ?? '');
 
         AlertRule::query()->updateOrCreate(
             ['id' => $this->editingId],
@@ -86,12 +121,13 @@ class Alerts extends Component
         $this->threshold = (string) $rule->threshold;
         $this->window_minutes = $rule->window_minutes;
         $this->cooldown_minutes = $rule->cooldown_minutes;
-        $this->webhook_url = $rule->webhook_url;
+        $this->webhook_url = $rule->webhook_url ?? '';
+        $this->email_recipients = implode(', ', $rule->email_recipients ?? []);
     }
 
     public function resetForm(): void
     {
-        $this->reset('editingId', 'name', 'instance_id', 'key', 'threshold', 'webhook_url', 'testResult');
+        $this->reset('editingId', 'name', 'instance_id', 'key', 'threshold', 'webhook_url', 'email_recipients', 'testResult');
         $this->metric_type = AlertRule::TYPE_HEARTBEAT;
         $this->aggregate = 'count';
         $this->operator = '>';
@@ -114,25 +150,42 @@ class Alerts extends Component
         }
     }
 
-    public function sendTest(int $ruleId, TeamsNotifier $teams): void
+    public function sendTest(int $ruleId, AlertNotificationSender $notifications): void
     {
         $rule = AlertRule::query()->findOrFail($ruleId);
+        $statuses = $notifications->test($rule);
 
-        $ok = $teams->send(
-            $rule->webhook_url,
-            "🔔 Test notification — {$rule->name}",
-            'good',
-            [
-                'Rule' => $rule->name,
-                'Condition' => $rule->describeCondition(),
-                'Scope' => $rule->instance?->name ?? 'All instances',
-            ],
-            route('alerts'),
-        );
+        if ($statuses['teams'] === 'disabled' && $statuses['email'] === 'disabled') {
+            $this->testResult = "\"{$rule->name}\" uses internal alarms only. No external channel is configured and no test notification was sent.";
 
-        $this->testResult = $ok
-            ? "Test notification for \"{$rule->name}\" delivered."
-            : "Delivery failed for \"{$rule->name}\" — check the webhook URL and laravel.log.";
+            return;
+        }
+
+        $results = [];
+
+        foreach (['teams' => 'Teams', 'email' => 'Email'] as $channel => $label) {
+            if ($statuses[$channel] !== 'disabled') {
+                $results[] = $label.': '.($statuses[$channel] === 'sent' ? 'delivered' : 'delivery failed');
+            }
+        }
+
+        $this->testResult = "Test for \"{$rule->name}\" — ".implode('; ', $results).'.';
+    }
+
+    /** @return list<string> */
+    private function parseEmailRecipients(string $input): array
+    {
+        $addresses = [];
+
+        foreach (preg_split('/[,;\r\n]/', $input) ?: [] as $candidate) {
+            $address = trim($candidate);
+
+            if ($address !== '') {
+                $addresses[strtolower($address)] ??= $address;
+            }
+        }
+
+        return array_values($addresses);
     }
 
     public function startResolving(int $eventId): void
@@ -178,7 +231,13 @@ class Alerts extends Component
             'events' => AlertEvent::query()->with(['rule', 'instance', 'resolvedBy'])->orderByDesc('triggered_at')->limit(50)->get(),
             'instances' => Instance::query()->orderBy('name')->get(),
             'metricTypes' => collect([AlertRule::TYPE_HEARTBEAT, AlertRule::TYPE_DATA_FLOW])
-                ->merge(DB::table('metric_buckets')->distinct()->orderBy('type')->pluck('type'))
+                ->merge(collect(DataFlowStatus::TYPES)
+                    ->merge([
+                        'gauge:queue.pending', 'gauge:queue.oldest_pending_seconds', 'gauge:queue.failed',
+                        'counter:agent.export_gap_minutes',
+                    ])
+                    ->merge(DB::table('metric_buckets')->distinct()->pluck('type'))
+                    ->sort(SORT_STRING))
                 ->unique()
                 ->values(),
         ])->title('Alerts — '.config('app.name'));

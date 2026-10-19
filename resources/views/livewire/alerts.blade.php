@@ -1,7 +1,11 @@
 <div>
-    <div class="mb-6">
-        <h1 class="text-xl font-semibold tracking-tight">Alerts</h1>
-        <p class="mt-1 text-sm text-zinc-500">Threshold rules evaluated every minute — breaches and recoveries go to Microsoft Teams.</p>
+    <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+            <h1 class="text-xl font-semibold tracking-tight">Alerts</h1>
+            <p class="mt-1 text-sm text-zinc-500">Rules are evaluated every minute. Alarms are recorded here; Teams and email notifications are optional.</p>
+        </div>
+        <a href="{{ route('alerts.email-templates') }}" wire:navigate
+           class="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500">Email templates</a>
     </div>
 
     @if ($testResult)
@@ -98,11 +102,21 @@
                 </div>
 
                 <div>
-                    <label class="mb-1 block text-sm text-zinc-400">Teams webhook URL</label>
+                    <label class="mb-1 block text-sm text-zinc-400">Teams webhook URL <span class="text-zinc-600">(optional)</span></label>
                     <input type="url" wire:model="webhook_url" placeholder="https://prod-…westeurope.logic.azure.com/…"
                            class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500">
                     @error('webhook_url') <p class="mt-1 text-sm text-rose-400">{{ $message }}</p> @enderror
                 </div>
+
+                <div>
+                    <label class="mb-1 block text-sm text-zinc-400">Email recipients <span class="text-zinc-600">(optional)</span></label>
+                    <textarea wire:model="email_recipients" rows="2" placeholder="ops@example.com, oncall@example.com"
+                              class="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500"></textarea>
+                    <p class="mt-1 text-xs text-zinc-500">Up to 10 addresses, separated by commas, semicolons or new lines. Email can be used on its own or alongside Teams.</p>
+                    @error('email_recipients') <p class="mt-1 text-sm text-rose-400">{{ $message }}</p> @enderror
+                </div>
+
+                <p class="text-xs text-zinc-500">Leave both fields empty for internal alarms only. Outgoing email requires the monitoring server's mail configuration.</p>
 
                 <div class="flex gap-2">
                     <button type="submit" class="flex-1 rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400">
@@ -132,6 +146,9 @@
                                 <p class="font-medium {{ $rule->enabled ? 'text-zinc-100' : 'text-zinc-500' }}">{{ $rule->name }}</p>
                                 <p class="mt-0.5 truncate text-xs text-zinc-500">
                                     {{ $rule->instance?->name ?? 'All instances' }} · {{ $rule->describeCondition() }} · cooldown {{ $rule->cooldown_minutes }}m
+                                </p>
+                                <p class="mt-0.5 text-xs text-zinc-500">
+                                    Notifications: {{ implode(' + ', array_filter([$rule->webhook_url ? 'Teams' : null, $rule->email_recipients ? 'Email' : null])) ?: 'Internal only' }}
                                 </p>
                             </div>
                             <div class="flex shrink-0 items-center gap-2">
@@ -173,9 +190,9 @@
                                 <span class="shrink-0 tabular-nums text-xs text-zinc-500">
                                     {{ $event->triggered_at->format('d.m. H:i') }}{{ $event->resolved_at ? ' → '.$event->resolved_at->format('H:i') : '' }}
                                 </span>
-                                @unless ($event->notified)
+                                @if ($event->notification_status === null && ! $event->notified)
                                     <span class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-400" title="Teams delivery failed">not delivered</span>
-                                @endunless
+                                @endif
                                 @unless ($event->resolved_at)
                                     <button type="button" wire:click="startResolving({{ $event->id }})"
                                             class="shrink-0 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500">
@@ -183,6 +200,29 @@
                                     </button>
                                 @endunless
                             </div>
+
+                            @if (is_array($event->notification_status))
+                                <div class="mt-1.5 space-y-1 text-xs text-zinc-500">
+                                    @foreach (['triggered' => 'Alarm', 'resolved' => 'Recovery'] as $phase => $label)
+                                        @php($channels = $event->notification_status[$phase] ?? null)
+                                        @if (is_array($channels) && count($channels))
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span>{{ $label }} delivery:</span>
+                                                @if (($channels['teams'] ?? 'disabled') === 'disabled' && ($channels['email'] ?? 'disabled') === 'disabled')
+                                                    <span>Internal only</span>
+                                                @else
+                                                    @foreach (['teams' => 'Teams', 'email' => 'Email'] as $channel => $channelLabel)
+                                                        @php($status = $channels[$channel] ?? 'disabled')
+                                                        <span class="{{ match ($status) { 'sent' => 'text-emerald-400', 'failed' => 'text-amber-400', default => 'text-zinc-500' } }}">
+                                                            {{ $channelLabel }}: {{ match ($status) { 'sent' => 'delivered', 'failed' => 'delivery failed', 'pending' => 'pending', default => 'not configured' } }}
+                                                        </span>
+                                                    @endforeach
+                                                @endif
+                                            </div>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            @endif
 
                             @if ($event->resolved_at && ($event->resolvedBy || $event->resolved_comment))
                                 <div class="mt-1.5 pl-16 text-xs text-zinc-500">

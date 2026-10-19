@@ -5,6 +5,27 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-10-19
+
+### Added
+
+- Optional, independent email and Teams notification channels per alert rule. Rules with neither channel still record internal incidents.
+- Central, editable alarm and recovery email subjects and plain-text templates with bounded placeholders and a live preview.
+- Separate trigger/recovery delivery status per channel in the alert history. Incidents are persisted before external delivery; one channel failing does not prevent the other.
+- Regression tests for notification channels, template validation and escaping, recipient privacy, delivery failures, and the built-in metric catalog.
+- Public notification setup and upgrade guidance, including required database migrations and SMTP configuration.
+
+### Changed
+
+- The Teams webhook is optional; existing Teams-only rules keep their configuration. Email recipients are configured explicitly and never enabled by deployment.
+- Known metrics, including `job:failed` and `scheduled_task:failed`, are always selectable when creating rules, before the first event arrives. Received custom metric types remain available.
+
+### Fixed
+
+- Non-delivering mail transports cannot report successful alert email delivery. SMTP credentials and message contents are excluded from delivery error messages.
+
+This release updates the hub only. The bundled agent remains at 0.4.0. Existing breach, cooldown, confirmed-recovery, and manual-resolution behavior is unchanged. Delivery failures are recorded without automatic retries.
+
 ## [0.4.0] - 2026-10-19
 
 ### Added

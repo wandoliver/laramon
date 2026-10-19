@@ -18,6 +18,7 @@ class AlertEvent extends Model
         'resolved_by_user_id',
         'resolved_comment',
         'notified',
+        'notification_status',
     ];
 
     protected function casts(): array
@@ -27,6 +28,7 @@ class AlertEvent extends Model
             'triggered_at' => 'datetime',
             'resolved_at' => 'datetime',
             'notified' => 'boolean',
+            'notification_status' => 'array',
         ];
     }
 

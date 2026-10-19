@@ -74,13 +74,14 @@ To be notified about the observation system itself:
 
 1. In **Alerts**, create a rule and select **data flow (missing, stale or incomplete)**.
 2. Choose one instance or all instances, and set a notification cooldown.
-3. Enter a Teams Workflows webhook URL, save the rule, and use its **Test** action.
+3. Save the rule for internal-only incidents, or enter email recipients, a Teams Workflows webhook URL, or both. Use **Test** to verify configured channels.
 
 The data-flow condition is fixed to `> 0`: unavailable or unverified data is `1`,
 verified healthy data is `0`. A newly upgraded instance can alert during warm-up.
-Neither the rule nor its webhook is created automatically. Webhook notifications
-send alert details to the configured external service; metric storage remains on
-your hub.
+No rule, email recipients, or webhook is created automatically. Configured
+notifications send alert details through the selected mail transport or webhook;
+metric storage remains on your hub. See [Alert notification channels](alert-notifications.md)
+for editable email templates and per-channel delivery status.
 
 ## Scheduled task outcomes
 
@@ -146,7 +147,9 @@ Deploy the hub before updating agents. Older agents can continue sending history
 but cannot attest completeness or automatically resolve incidents. Updating the
 hub does not install the updated agent in monitored applications.
 
-Existing installations need no new database migration for these features. If an
+The 0.4.0 scheduler/data-flow features need no new database migration on an
+existing installation. The 0.4.1 notification update does require migrations;
+see its [upgrade checklist](install.md#upgrading-to-041). If an
 application published its agent configuration, merge the new defaults and retain
 the `scheduled_task_last_success` and `scheduled_task_last_failure` Pulse type
 mappings. Expectations are suppressed if Pulse, its scheduler recorder, or these

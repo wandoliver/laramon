@@ -32,6 +32,7 @@ class AlertRule extends Model
         'window_minutes',
         'cooldown_minutes',
         'webhook_url',
+        'email_recipients',
         'enabled',
     ];
 
@@ -40,6 +41,7 @@ class AlertRule extends Model
         return [
             'threshold' => 'float',
             'enabled' => 'boolean',
+            'email_recipients' => 'array',
         ];
     }
 

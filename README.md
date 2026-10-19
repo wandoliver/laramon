@@ -1,6 +1,6 @@
 # LaraMon
 
-![Release](https://img.shields.io/badge/release-v0.4.0-blue)
+![Release](https://img.shields.io/badge/release-v0.4.1-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Self-hosted fleet monitoring for Laravel applications — a central hub that every instance you operate reports into. Inspired by [Laravel Nightwatch](https://nightwatch.laravel.com), built for teams who want their telemetry on their own infrastructure.
@@ -23,7 +23,7 @@ Each monitored application runs [Laravel Pulse](https://pulse.laravel.com) local
 
 **What you get per instance:** request throughput & latency per route, slow queries, slow jobs & outgoing requests, queue depth & failures, scheduled task runs/runtimes/failures, exception trends (grouped by class + location), cache hit ratio, **active users** (who is using the app right now, with online indicators) — and any **business metrics** the app registers (gauges & counters), which appear on the dashboard automatically.
 
-**Alerts:** threshold rules over any collected metric — error rate, queue backlog, slow requests, business gauges, "instance silent for N minutes", or missing/incomplete monitoring data — evaluated every minute with breach/recovery notifications delivered to a configured **Microsoft Teams** Workflows webhook. Missing, stale, or partially exported data cannot automatically resolve an incident. Cooldowns stop flapping metrics from spamming the channel. No rule or webhook is created automatically.
+**Alerts:** threshold rules over metrics or monitoring data flow are evaluated every minute and recorded internally. Built-in metrics are selectable before the first event arrives. Teams Workflows webhooks and email recipients are optional per rule and can be used together. Central alarm/recovery email templates are editable with a live preview. Missing, stale, or partially exported data cannot automatically resolve an incident. Cooldowns limit repeated notifications. No rule or notification channel is enabled automatically. See [Alert notification channels](docs/alert-notifications.md) for setup and delivery status.
 
 **Drill-downs:** exceptions, slow queries, and slow requests are clickable. The agent sends the latest occurrences per fingerprint to your self-hosted hub — exception message, stack trace, request URL, slow-query SQL, duration, resource timings, and safe `context.*` metadata — so you can triage straight from the dashboard. Request payloads and query bindings are excluded.
 
@@ -105,7 +105,7 @@ See [Monitoring data flow and scheduled tasks](docs/monitoring-data-flow.md) for
 - **Token rotation:** rotating a token (dashboard → Instances) keeps the old one valid for 7 days.
 - **Outages:** if the hub is unreachable, the agent holds its watermark and retries next run. Pulse trims fine-grained data after ~1 hour, so longer outages appear as a marked data gap rather than silent flat-lines.
 - **Clocks:** instances should run NTP; the hub clamps wildly skewed buckets and flags observed skew.
-- **Upgrades:** deploy the hub first, then update agents. Keep the new Pulse type mappings when merging published configuration. Existing installations need no new database migration for the 0.4.0 scheduler/data-flow changes; use the [upgrade checklist](docs/install.md#upgrading-to-040).
+- **Upgrades:** version 0.4.1 updates the hub only and requires two new database migrations; the bundled agent remains at 0.4.0. Configure a real mail transport only if email notifications are wanted, then rebuild caches and reload PHP-FPM. See the [0.4.1 upgrade checklist](docs/install.md#upgrading-to-041). For the earlier scheduler/data-flow agent update, follow the [0.4.0 checklist](docs/install.md#upgrading-to-040).
 
 ## Development
 
