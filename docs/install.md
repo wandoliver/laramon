@@ -63,6 +63,26 @@ The monitored application's Laravel scheduler must run every minute as well:
 
 The agent's default export interval is five minutes. Confirmed completeness requires Pulse's direct `storage` ingest driver and `database` storage driver, with enabled, fully sampled supported recorders. Redis or custom Pulse pipelines do not confirm completeness. The exporter reads the configured `pulse.storage.database.connection`.
 
+## Upgrading to 0.4.2
+
+This is a hub-only update. The bundled agent remains at 0.4.0, and applications already using it need no update for the fleet history display. There are no new migrations, dependency updates, or configuration changes since 0.4.1.
+
+1. Deploy the 0.4.2 hub code and the included `public/build/` assets through your normal deployment process. The server does not need Node or a separate frontend build.
+2. Rebuild caches and reload the web PHP process. Keep the hub scheduler running; no additional server setup is required for this display change.
+
+Example cache/reload commands for PHP 8.4-FPM:
+
+```bash
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+sudo service php8.4-fpm reload
+```
+
+Use the equivalent reload/restart for your hosting setup and PHP version. Your normal dependency-installation and migration deployment steps can remain in place. If upgrading from before 0.4.1, also complete the [0.4.1 notification upgrade](#upgrading-to-041), including its two migrations. Older agents still need the [0.4.0 agent upgrade](#upgrading-to-040) to confirm completeness.
+
+After deployment, each fleet card distinguishes **Export coverage: Confirmed** for the displayed interval from confirmed coverage of its 24-hour totals window. The history indicator shows a duration and progress bar, for example **6h 40m of 24h confirmed**, plus **17h 20m still unconfirmed**. A stale, pending, missing, or interrupted confirmation leaves progress unverified. Even with 24 hours of confirmed time, metric types without their own coverage remain unconfirmed. Missing data never establishes zero errors or automatic recovery. See [Monitoring data flow and scheduled tasks](monitoring-data-flow.md) for the coverage rules.
+
 ## Upgrading to 0.4.1
 
 This is a hub-only update. The bundled agent remains at 0.4.0; applications already using that agent need no update for notification channels or the metric dropdown.

@@ -5,12 +5,13 @@ namespace App\Livewire;
 use App\Models\AlertEvent;
 use App\Models\Instance;
 use App\Services\BucketQuery;
+use App\Services\DataFlowStatus;
 use Illuminate\Support\Collection;
 use Livewire\Component;
 
 class FleetOverview extends Component
 {
-    public function render(BucketQuery $buckets)
+    public function render(BucketQuery $buckets, DataFlowStatus $dataFlow)
     {
         $to = now()->getTimestamp();
         $from = $to - 86400;
@@ -18,7 +19,7 @@ class FleetOverview extends Component
         $cards = Instance::query()
             ->orderBy('name')
             ->get()
-            ->map(fn (Instance $instance) => $this->card($instance, $buckets, $from, $to))
+            ->map(fn (Instance $instance) => $this->card($instance, $buckets, $dataFlow, $from, $to))
             ->sortBy(fn (array $card) => match ($card['health']) {
                 'down' => 0,
                 'unknown' => 1,
@@ -34,7 +35,7 @@ class FleetOverview extends Component
     /**
      * @return array<string, mixed>
      */
-    private function card(Instance $instance, BucketQuery $buckets, int $from, int $to): array
+    private function card(Instance $instance, BucketQuery $buckets, DataFlowStatus $dataFlow, int $from, int $to): array
     {
         $flow = $instance->dataFlow();
         if ($flow['state'] === 'healthy') {
@@ -62,14 +63,34 @@ class FleetOverview extends Component
         $failedJobs = $buckets->total($instance->id, 'job:failed', $from, $to);
         $gap = $buckets->total($instance->id, 'counter:agent.export_gap_minutes', $from, $to);
 
+        // Measure the same settled 24-hour range as the totals. Reuse the
+        // confirmation checks so stale exports or gaps never imply progress.
+        $confirmedSeconds = $flow['state'] === 'healthy'
+            ? max(0, min(86400, $flow['coverage']['through'] - max($from, $flow['coverage']['from'])))
+            : 0;
+        $confirmedMinutes = intdiv($confirmedSeconds, 60);
+        $historyAvailable = $confirmedMinutes >= 5
+            && $dataFlow->window($instance, $confirmedMinutes) !== null;
+        if (! $historyAvailable) {
+            $confirmedSeconds = $confirmedMinutes = 0;
+        }
+        $unconfirmedMinutes = 1440 - $confirmedMinutes;
+
         return [
             'instance' => $instance,
             'health' => $instance->health(),
             'data_flow' => $flow,
             'totals_through' => $flow['state'] === 'healthy' ? $flow['coverage']['through'] : null,
-            'requests_verified' => $gap->count === 0 && $verified('request'),
-            'exceptions_verified' => $gap->count === 0 && $verified('exception'),
-            'failed_jobs_verified' => $gap->count === 0 && $verified('job:failed'),
+            'history_coverage_available' => $historyAvailable,
+            'history_confirmed_seconds' => $confirmedSeconds,
+            'history_confirmed_minutes' => $confirmedMinutes,
+            'history_unconfirmed_minutes' => $unconfirmedMinutes,
+            'history_confirmed_label' => $this->durationLabel($confirmedMinutes),
+            'history_unconfirmed_label' => $this->durationLabel($unconfirmedMinutes),
+            'history_coverage_percent' => intdiv($confirmedMinutes * 100, 1440),
+            'requests_verified' => $historyAvailable && $gap->count === 0 && $verified('request'),
+            'exceptions_verified' => $historyAvailable && $gap->count === 0 && $verified('exception'),
+            'failed_jobs_verified' => $historyAvailable && $gap->count === 0 && $verified('job:failed'),
             'heartbeat_age' => $instance->last_heartbeat_at?->diffForHumans(short: true),
             'exception_count' => $exceptions->sum('count'),
             'exception_spark' => $this->sparkValues($exceptions, $from, $to, $sparkStep),
@@ -86,6 +107,18 @@ class FleetOverview extends Component
             'open_alerts' => $openAlerts,
             'online_users' => $onlineUsers,
         ];
+    }
+
+    private function durationLabel(int $minutes): string
+    {
+        $hours = intdiv($minutes, 60);
+        $remainingMinutes = $minutes % 60;
+
+        return match (true) {
+            $hours === 0 => "{$remainingMinutes}m",
+            $remainingMinutes === 0 => "{$hours}h",
+            default => "{$hours}h {$remainingMinutes}m",
+        };
     }
 
     /**

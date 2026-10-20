@@ -5,6 +5,24 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-10-19
+
+### Added
+
+- Fleet cards show how much of their 24-hour totals window is confirmed, the remaining unconfirmed duration, and an accessible progress bar.
+- Regression tests for partial and full history, stale or missing confirmation, pending exports, export gaps, and independently unverified metric types.
+
+### Changed
+
+- The shared data-flow panel uses **Export coverage: Confirmed** for its displayed interval, distinguishing it from full-day history coverage.
+- Unverified metric totals explicitly say **24h total unconfirmed** or **observed · 24h unconfirmed**; failed-job history uses the same time scope.
+
+### Fixed
+
+- Fleet history progress remains unverified when confirmations are stale, missing, pending, or interrupted by an export gap. Full time coverage alone cannot verify an unsupported metric type or turn missing history into zero errors.
+
+This release updates the hub only. The bundled agent remains at 0.4.0. There are no new migrations, dependency updates, or configuration changes since 0.4.1. Alert evaluation and recovery rules are unchanged.
+
 ## [0.4.1] - 2026-10-19
 
 ### Added

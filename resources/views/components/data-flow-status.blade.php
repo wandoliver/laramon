@@ -1,11 +1,11 @@
 @props(['flow'])
 
 <dl {{ $attributes->merge(['class' => 'grid gap-3 text-xs sm:grid-cols-3']) }}>
-    @foreach (['heartbeat' => 'Heartbeat', 'export' => 'Accepted export', 'coverage' => 'Completeness'] as $key => $label)
+    @foreach (['heartbeat' => 'Heartbeat', 'export' => 'Accepted export', 'coverage' => 'Export coverage'] as $key => $label)
         @php
             $status = $flow[$key]['state'];
             $text = match ($status) {
-                'healthy' => $key === 'coverage' ? 'Complete' : 'Fresh',
+                'healthy' => $key === 'coverage' ? 'Confirmed' : 'Fresh',
                 'stale' => 'Stale',
                 'warming_up' => 'Building coverage',
                 default => 'Unknown',

@@ -44,6 +44,25 @@
 
                     <div class="mt-3 border-t border-zinc-800/80 pt-3">
                         <x-data-flow-status :flow="$card['data_flow']" />
+                        <div class="mt-3 space-y-1.5">
+                            @if ($card['history_coverage_available'])
+                                <p class="text-xs text-zinc-300">24-hour history: {{ $card['history_confirmed_label'] }} of 24h confirmed</p>
+                                <div role="progressbar" aria-label="Confirmed coverage of the 24-hour history"
+                                     aria-valuemin="0" aria-valuemax="1440" aria-valuenow="{{ $card['history_confirmed_minutes'] }}"
+                                     aria-valuetext="{{ $card['history_confirmed_minutes'] }} of 1440 minutes confirmed"
+                                     class="h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                                    <div class="h-full rounded-full bg-sky-400" style="width: {{ $card['history_coverage_percent'] }}%"></div>
+                                </div>
+                                @if ($card['history_unconfirmed_minutes'] > 0)
+                                    <p class="text-xs text-zinc-500">{{ $card['history_unconfirmed_label'] }} still unconfirmed.</p>
+                                @elseif (! $card['requests_verified'] || ! $card['exceptions_verified'] || ! $card['failed_jobs_verified'])
+                                    <p class="text-xs text-amber-400">Some metric totals remain unverified despite full time coverage.</p>
+                                @endif
+                            @else
+                                <p class="text-xs text-amber-400">24-hour history: unverified</p>
+                                <p class="text-xs text-zinc-500">Fresh, gap-free exports are needed to confirm the history.</p>
+                            @endif
+                        </div>
                         @if ($card['totals_through'] !== null)
                             <p class="mt-2 text-xs text-zinc-500">24-hour totals through {{ \Illuminate\Support\Carbon::createFromTimestamp($card['totals_through'])->format('d.m H:i') }} UTC.</p>
                         @endif
@@ -59,7 +78,7 @@
                         <div>
                             <p class="text-xs text-zinc-500">Requests</p>
                             <p class="mt-0.5 font-semibold tabular-nums">{{ $card['requests_verified'] || $card['request_count'] > 0 ? Number::abbreviate($card['request_count']) : '—' }}</p>
-                            @unless ($card['requests_verified']) <p class="text-xs text-amber-400">{{ $card['request_count'] > 0 ? 'observed · partial' : 'unavailable' }}</p> @endunless
+                            @unless ($card['requests_verified']) <p class="text-xs text-amber-400">{{ $card['request_count'] > 0 ? 'observed · 24h unconfirmed' : '24h total unconfirmed' }}</p> @endunless
                             <p class="text-xs tabular-nums text-zinc-500">
                                 @if ($card['request_avg'] !== null) {{ round($card['request_avg']) }} ms avg @else — @endif
                             </p>
@@ -69,7 +88,7 @@
                             <p class="mt-0.5 font-semibold tabular-nums {{ $card['exception_count'] > 0 ? 'text-rose-400' : '' }}">
                                 {{ $card['exceptions_verified'] || $card['exception_count'] > 0 ? Number::abbreviate($card['exception_count']) : '—' }}
                             </p>
-                            @unless ($card['exceptions_verified']) <p class="text-xs text-amber-400">{{ $card['exception_count'] > 0 ? 'observed · partial' : 'unavailable' }}</p> @endunless
+                            @unless ($card['exceptions_verified']) <p class="text-xs text-amber-400">{{ $card['exception_count'] > 0 ? 'observed · 24h unconfirmed' : '24h total unconfirmed' }}</p> @endunless
                             <div class="mt-1 text-rose-400/80">{!! \App\Support\Sparkline::render($card['exception_spark'], 'currentColor', 88, 20) !!}</div>
                         </div>
                         <div>
@@ -78,7 +97,7 @@
                             <p class="text-xs tabular-nums {{ ($card['queue']['failed'] ?? 0) > 0 || $card['failed_jobs'] > 0 ? 'text-rose-400' : 'text-zinc-500' }}">
                                 {{ $card['queue_verified'] && isset($card['queue']['failed']) ? $card['queue']['failed'] : ($card['failed_jobs_verified'] || $card['failed_jobs'] > 0 ? $card['failed_jobs'] : '—') }} failed
                             </p>
-                            @unless ($card['failed_jobs_verified']) <p class="text-xs text-amber-400">failed-job history partial</p> @endunless
+                            @unless ($card['failed_jobs_verified']) <p class="text-xs text-amber-400">24h failure history unconfirmed</p> @endunless
                         </div>
                     </div>
                 </a>

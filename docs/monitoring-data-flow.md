@@ -12,7 +12,7 @@ The instance page shows three separate signals:
 | --- | --- |
 | Heartbeat | The agent's scheduler recently reached the hub. It does not prove metrics arrived. |
 | Accepted export | The hub recently accepted an export. A partially delivered export is still unverified. |
-| Completeness | The agent finished exporting a settled interval and the hub accepted its final confirmation. |
+| Export coverage | The agent finished exporting a settled interval and the hub accepted its final confirmation. |
 
 An instance is healthy only when all three signals are fresh and completeness
 covers a full five-minute interval. Heartbeats must be less than two minutes old;
@@ -20,6 +20,14 @@ accepted exports and completeness proofs must remain within fifteen minutes.
 Invalid clocks, excessive clock skew, partial exports, and missing confirmation
 leave monitoring unverified. A stale heartbeat can also indicate a stopped
 application scheduler.
+
+The fleet's 24-hour history indicator shows how much of the totals window is
+confirmed, for example **6h 40m of 24h confirmed** and **17h 20m still
+unconfirmed**. **Confirmed** in the export panel refers to its displayed interval;
+the full 24-hour history may still be incomplete. Stale, pending, or missing
+confirmations and gaps inside that interval leave progress unverified. A fully
+confirmed time window can still contain unverified metric types, which are
+labelled separately.
 
 The fleet's verified totals end at the displayed confirmation boundary. The open
 tail is excluded. Historical charts and tables remain useful observations but may

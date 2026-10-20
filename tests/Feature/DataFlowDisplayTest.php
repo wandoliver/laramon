@@ -51,13 +51,20 @@ class DataFlowDisplayTest extends TestCase
 
         Livewire::actingAs($this->user)->test(FleetOverview::class)
             ->assertViewHas('cards', fn ($cards) => $cards->sole()['health'] === 'unknown'
-                && ! $cards->sole()['exceptions_verified'] && ! $cards->sole()['requests_verified'])
+                && ! $cards->sole()['exceptions_verified'] && ! $cards->sole()['requests_verified']
+                && ! $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 0
+                && $cards->sole()['history_confirmed_minutes'] === 0
+                && $cards->sole()['history_unconfirmed_minutes'] === 1440
+                && $cards->sole()['history_coverage_percent'] === 0)
             ->assertSee('Heartbeat')
             ->assertSee('Fresh')
             ->assertSee('Accepted export')
-            ->assertSee('Completeness')
+            ->assertSee('Export coverage')
             ->assertSee('Unknown')
-            ->assertSee('unavailable')
+            ->assertSee('24-hour history: unverified')
+            ->assertDontSee('role="progressbar"', false)
+            ->assertSee('24h total unconfirmed')
             ->assertSee('Missing data cannot confirm recovery.')
             ->assertDontSee('title="Healthy"', false);
     }
@@ -92,8 +99,15 @@ class DataFlowDisplayTest extends TestCase
         Livewire::actingAs($this->user)->test(FleetOverview::class)
             ->assertViewHas('cards', fn ($cards) => $cards->sole()['health'] === 'healthy'
                 && $cards->sole()['requests_verified'] && $cards->sole()['exceptions_verified']
-                && $cards->sole()['failed_jobs_verified'])
-            ->assertSee('Complete')
+                && $cards->sole()['failed_jobs_verified']
+                && $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 86400
+                && $cards->sole()['history_confirmed_minutes'] === 1440
+                && $cards->sole()['history_unconfirmed_minutes'] === 0
+                && $cards->sole()['history_coverage_percent'] === 100)
+            ->assertSee('24-hour history: 24h of 24h confirmed')
+            ->assertSee('aria-valuenow="1440"', false)
+            ->assertSee('Confirmed')
             ->assertSee('title="Healthy"', false)
             ->assertDontSee('Missing data cannot confirm recovery.')
             ->assertDontSee('Partial history');
@@ -107,9 +121,13 @@ class DataFlowDisplayTest extends TestCase
 
         Livewire::actingAs($this->user)->test(FleetOverview::class)
             ->assertViewHas('cards', fn ($cards) => $cards->sole()['requests_verified']
-                && ! $cards->sole()['exceptions_verified'] && ! $cards->sole()['failed_jobs_verified'])
+                && ! $cards->sole()['exceptions_verified'] && ! $cards->sole()['failed_jobs_verified']
+                && $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 86400
+                && $cards->sole()['history_coverage_percent'] === 100)
             ->assertSee('Partial history')
-            ->assertSee('unavailable');
+            ->assertSee('Some metric totals remain unverified despite full time coverage.')
+            ->assertSee('24h total unconfirmed');
     }
 
     public function test_a_recorded_gap_prevents_verified_historical_totals(): void
@@ -127,8 +145,163 @@ class DataFlowDisplayTest extends TestCase
 
         Livewire::actingAs($this->user)->test(FleetOverview::class)
             ->assertViewHas('cards', fn ($cards) => ! $cards->sole()['requests_verified']
-                && ! $cards->sole()['exceptions_verified'])
+                && ! $cards->sole()['exceptions_verified']
+                && ! $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 0
+                && $cards->sole()['history_confirmed_minutes'] === 0
+                && $cards->sole()['history_unconfirmed_minutes'] === 1440
+                && $cards->sole()['history_coverage_percent'] === 0)
+            ->assertSee('24-hour history: unverified')
+            ->assertDontSee('role="progressbar"', false)
             ->assertSee('data gap')
+            ->assertSee('Partial history');
+    }
+
+    public function test_partial_history_shows_the_confirmed_duration_in_the_24_hour_totals_window(): void
+    {
+        $attributes = $this->healthyAttributes();
+        $through = $attributes['meta']['data_flow']['covered_through'];
+        $attributes['meta']['data_flow']['covered_from'] = $through - 400 * 60;
+        $instance = Instance::factory()->create($attributes);
+        MetricBucket::query()->create([
+            'instance_id' => $instance->id, 'type' => 'request', 'key' => 'GET /',
+            'key_hash' => MetricBucket::hashKey('GET /'), 'bucket_seconds' => 300,
+            'bucket_start' => $through - 300, 'count' => 7000,
+        ]);
+
+        Livewire::actingAs($this->user)->test(FleetOverview::class)
+            ->assertViewHas('cards', fn ($cards) => $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 24000
+                && $cards->sole()['history_confirmed_minutes'] === 400
+                && $cards->sole()['history_unconfirmed_minutes'] === 1040
+                && $cards->sole()['history_coverage_percent'] === 27
+                && $cards->sole()['totals_through'] === $through
+                && ! $cards->sole()['requests_verified'] && ! $cards->sole()['exceptions_verified']
+                && ! $cards->sole()['failed_jobs_verified'] && $cards->sole()['request_count'] === 7000
+                && $cards->sole()['exception_count'] === 0)
+            ->assertSee('Export coverage')
+            ->assertSee('Confirmed')
+            ->assertSee('24-hour history: 6h 40m of 24h confirmed')
+            ->assertSee('17h 20m still unconfirmed.')
+            ->assertSee('role="progressbar"', false)
+            ->assertSee('aria-valuenow="400"', false)
+            ->assertSee('aria-valuemax="1440"', false)
+            ->assertSee('observed · 24h unconfirmed')
+            ->assertSee('24h failure history unconfirmed')
+            ->assertSee('Partial history')
+            ->assertSee('24h total unconfirmed')
+            ->assertDontSee('Complete');
+    }
+
+    public function test_exactly_24_hours_are_fully_confirmed_without_counting_the_open_tail(): void
+    {
+        $attributes = $this->healthyAttributes();
+        $through = $attributes['meta']['data_flow']['covered_through'];
+        $attributes['meta']['data_flow']['covered_from'] = $through - 86400;
+        Instance::factory()->create($attributes);
+
+        Livewire::actingAs($this->user)->test(FleetOverview::class)
+            ->assertViewHas('cards', fn ($cards) => $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 86400
+                && $cards->sole()['history_confirmed_minutes'] === 1440
+                && $cards->sole()['history_unconfirmed_minutes'] === 0
+                && $cards->sole()['history_coverage_percent'] === 100
+                && $cards->sole()['requests_verified'] && $cards->sole()['exceptions_verified']
+                && $cards->sole()['failed_jobs_verified'] && $cards->sole()['totals_through'] === $through)
+            ->assertDontSee('Partial history');
+    }
+
+    public function test_unusable_current_flow_never_advertises_confirmed_history_progress(): void
+    {
+        $healthy = $this->healthyAttributes();
+        $missing = $healthy;
+        unset($missing['meta']['data_flow']);
+        $staleExport = array_merge($healthy, ['last_ingest_at' => now()->subMinutes(20)]);
+        $staleHeartbeat = array_merge($healthy, ['last_heartbeat_at' => now()->subMinutes(3)]);
+        $staleProof = $healthy;
+        $staleProof['meta']['data_flow']['covered_through'] -= 1200;
+        $pending = $healthy;
+        $pending['meta']['data_flow_pending'] = true;
+        $clockSkew = $healthy;
+        $clockSkew['meta']['data_flow']['clock_skew_seconds'] = 61;
+        $warmingUp = $healthy;
+        $warmingUp['meta']['data_flow']['covered_from'] = $warmingUp['meta']['data_flow']['covered_through'];
+        $future = $healthy;
+        $future['meta']['data_flow']['covered_through'] += 600;
+
+        foreach (compact('missing', 'staleExport', 'staleHeartbeat', 'staleProof', 'pending', 'clockSkew', 'warmingUp', 'future') as $attributes) {
+            $instance = Instance::factory()->create($attributes);
+            Livewire::actingAs($this->user)->test(FleetOverview::class)
+                ->assertViewHas('cards', function ($cards) use ($instance) {
+                    $card = $cards->firstWhere('instance.id', $instance->id);
+
+                    return ! $card['history_coverage_available']
+                        && $card['history_confirmed_seconds'] === 0
+                        && $card['history_confirmed_minutes'] === 0
+                        && $card['history_unconfirmed_minutes'] === 1440
+                        && $card['history_coverage_percent'] === 0
+                        && ! $card['requests_verified'] && ! $card['exceptions_verified']
+                        && ! $card['failed_jobs_verified'];
+                })
+                ->assertSee('24-hour history: unverified')
+                ->assertDontSee('role="progressbar"', false)
+                ->assertDontSee('0h of 24h confirmed');
+            $instance->delete();
+        }
+    }
+
+    public function test_gaps_reported_only_as_sum_or_max_also_prevent_confirmation(): void
+    {
+        foreach (['sum', 'max'] as $signal) {
+            $instance = Instance::factory()->create($this->healthyAttributes());
+            MetricBucket::query()->create([
+                'instance_id' => $instance->id,
+                'type' => 'counter:agent.export_gap_minutes',
+                'key' => 'agent.export_gap_minutes',
+                'key_hash' => MetricBucket::hashKey('agent.export_gap_minutes'),
+                'bucket_start' => $instance->meta['data_flow']['covered_through'] - 300,
+                'bucket_seconds' => 300,
+                'count' => 0,
+                $signal => 10,
+            ]);
+
+            Livewire::actingAs($this->user)->test(FleetOverview::class)
+                ->assertViewHas('cards', fn ($cards) => ! $cards->sole()['history_coverage_available']
+                    && $cards->sole()['history_confirmed_seconds'] === 0
+                    && $cards->sole()['history_unconfirmed_minutes'] === 1440
+                    && ! $cards->sole()['requests_verified'] && ! $cards->sole()['exceptions_verified']
+                    && ! $cards->sole()['failed_jobs_verified'])
+                ->assertSee('24-hour history: unverified')
+                ->assertDontSee('role="progressbar"', false);
+            $instance->delete();
+        }
+    }
+
+    public function test_an_older_gap_does_not_erase_the_later_confirmed_interval(): void
+    {
+        $attributes = $this->healthyAttributes();
+        $through = $attributes['meta']['data_flow']['covered_through'];
+        $attributes['meta']['data_flow']['covered_from'] = $through - 400 * 60;
+        $instance = Instance::factory()->create($attributes);
+        MetricBucket::query()->create([
+            'instance_id' => $instance->id,
+            'type' => 'counter:agent.export_gap_minutes',
+            'key' => 'agent.export_gap_minutes',
+            'key_hash' => MetricBucket::hashKey('agent.export_gap_minutes'),
+            'bucket_start' => $attributes['meta']['data_flow']['covered_from'] - 300,
+            'bucket_seconds' => 300,
+            'count' => 10,
+        ]);
+
+        Livewire::actingAs($this->user)->test(FleetOverview::class)
+            ->assertViewHas('cards', fn ($cards) => $cards->sole()['history_coverage_available']
+                && $cards->sole()['history_confirmed_seconds'] === 24000
+                && $cards->sole()['history_confirmed_minutes'] === 400
+                && $cards->sole()['history_unconfirmed_minutes'] === 1040
+                && $cards->sole()['history_coverage_percent'] === 27
+                && ! $cards->sole()['requests_verified'] && ! $cards->sole()['exceptions_verified']
+                && ! $cards->sole()['failed_jobs_verified'])
+            ->assertSee('24-hour history: 6h 40m of 24h confirmed')
             ->assertSee('Partial history');
     }
 
@@ -144,7 +317,7 @@ class DataFlowDisplayTest extends TestCase
 
         $component->call('$refresh')
             ->assertViewHas('dataFlow', fn ($flow) => $flow['state'] === 'healthy')
-            ->assertSee('Complete')
+            ->assertSee('Confirmed')
             ->assertDontSee('Missing or stale data cannot confirm recovery.')
             ->assertSee('Unconfirmed periods may contain gaps');
     }

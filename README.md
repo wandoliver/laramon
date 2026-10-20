@@ -1,6 +1,6 @@
 # LaraMon
 
-![Release](https://img.shields.io/badge/release-v0.4.1-blue)
+![Release](https://img.shields.io/badge/release-v0.4.2-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Self-hosted fleet monitoring for Laravel applications — a central hub that every instance you operate reports into. Inspired by [Laravel Nightwatch](https://nightwatch.laravel.com), built for teams who want their telemetry on their own infrastructure.
@@ -96,6 +96,8 @@ The Scheduler table includes successful and failed runs, including tasks with on
 
 The instance's **Monitoring data flow** panel separates heartbeat freshness, accepted exports, and confirmed data completeness. A recent heartbeat alone cannot establish health. The agent confirms only settled, fully exported five-minute intervals from supported, fully sampled Pulse recorders; Redis or custom ingest/storage pipelines remain unverified.
 
+The fleet shows confirmed coverage of its 24-hour totals window as a duration and progress bar, for example **6h 40m of 24h confirmed** with **17h 20m still unconfirmed**. **Export coverage: Confirmed** refers to the displayed export interval, not automatically the whole day. Stale or missing confirmation and export gaps leave history unverified; individual metric totals can also remain unconfirmed when their types are not covered.
+
 See [Monitoring data flow and scheduled tasks](docs/monitoring-data-flow.md) for configuration, alert behavior, upgrade order, and the initial warm-up period.
 
 ## Operations notes
@@ -105,7 +107,7 @@ See [Monitoring data flow and scheduled tasks](docs/monitoring-data-flow.md) for
 - **Token rotation:** rotating a token (dashboard → Instances) keeps the old one valid for 7 days.
 - **Outages:** if the hub is unreachable, the agent holds its watermark and retries next run. Pulse trims fine-grained data after ~1 hour, so longer outages appear as a marked data gap rather than silent flat-lines.
 - **Clocks:** instances should run NTP; the hub clamps wildly skewed buckets and flags observed skew.
-- **Upgrades:** version 0.4.1 updates the hub only and requires two new database migrations; the bundled agent remains at 0.4.0. Configure a real mail transport only if email notifications are wanted, then rebuild caches and reload PHP-FPM. See the [0.4.1 upgrade checklist](docs/install.md#upgrading-to-041). For the earlier scheduler/data-flow agent update, follow the [0.4.0 checklist](docs/install.md#upgrading-to-040).
+- **Upgrades:** version 0.4.2 updates the hub only, with no new migrations, dependencies, or configuration changes since 0.4.1. The bundled agent remains at 0.4.0. Deploy the included frontend assets, rebuild caches, and reload PHP-FPM through your normal deployment process; see the [0.4.2 upgrade checklist](docs/install.md#upgrading-to-042). When upgrading from an older version, also follow the [0.4.1 notification checklist](docs/install.md#upgrading-to-041) and the [0.4.0 scheduler/data-flow checklist](docs/install.md#upgrading-to-040).
 
 ## Development
 
