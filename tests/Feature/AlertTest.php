@@ -49,6 +49,7 @@ class AlertTest extends TestCase
             'cooldown_minutes' => 30,
             'webhook_url' => 'https://teams.test/webhook',
             'enabled' => true,
+            'trigger_delay_minutes' => 0, 'recovery_delay_minutes' => 0,
         ], $overrides));
     }
 
@@ -108,7 +109,7 @@ class AlertTest extends TestCase
         Http::assertSentCount(2);
     }
 
-    public function test_cooldown_suppresses_immediate_retrigger(): void
+    public function test_cooldown_suppresses_delivery_but_keeps_the_new_internal_incident(): void
     {
         Http::fake(['teams.test/*' => Http::response('ok')]);
 
@@ -121,7 +122,8 @@ class AlertTest extends TestCase
 
         $this->artisan('monitor:evaluate-alerts');
 
-        $this->assertSame(1, AlertEvent::query()->count());
+        $this->assertSame(2, AlertEvent::query()->count());
+        $this->assertSame('cooldown', AlertEvent::query()->latest('id')->first()->notification_status['triggered']['teams']);
         Http::assertSentCount(1);
     }
 

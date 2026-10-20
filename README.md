@@ -1,6 +1,6 @@
 # LaraMon
 
-![Release](https://img.shields.io/badge/release-v0.4.2-blue)
+![Release](https://img.shields.io/badge/release-v0.4.3-blue)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Self-hosted fleet monitoring for Laravel applications — a central hub that every instance you operate reports into. Inspired by [Laravel Nightwatch](https://nightwatch.laravel.com), built for teams who want their telemetry on their own infrastructure.
@@ -23,7 +23,7 @@ Each monitored application runs [Laravel Pulse](https://pulse.laravel.com) local
 
 **What you get per instance:** request throughput & latency per route, slow queries, slow jobs & outgoing requests, queue depth & failures, scheduled task runs/runtimes/failures, exception trends (grouped by class + location), cache hit ratio, **active users** (who is using the app right now, with online indicators) — and any **business metrics** the app registers (gauges & counters), which appear on the dashboard automatically.
 
-**Alerts:** threshold rules over metrics or monitoring data flow are evaluated every minute and recorded internally. Built-in metrics are selectable before the first event arrives. Teams Workflows webhooks and email recipients are optional per rule and can be used together. Central alarm/recovery email templates are editable with a live preview. Missing, stale, or partially exported data cannot automatically resolve an incident. Cooldowns limit repeated notifications. No rule or notification channel is enabled automatically. See [Alert notification channels](docs/alert-notifications.md) for setup and delivery status.
+**Alerts:** threshold rules over metrics or monitoring data flow are evaluated every minute and recorded internally immediately. Per-rule notification delays default to **10 minutes of continuous breach** before an alarm and **5 minutes of continuously confirmed recovery** before resolution; both accept 0 for immediate action. Short incidents stay visible internally without an alarm/recovery message pair. Missing, stale, or partially exported data cannot confirm recovery. Cooldowns space external alarm notifications. Built-in metrics are selectable before the first event arrives. Teams Workflows webhooks and email recipients are optional per rule and can be used together. Central alarm/recovery email templates are editable with a live preview. No rule or notification channel is enabled automatically. See [Alert notification channels](docs/alert-notifications.md) for setup, continuity checks and delivery status.
 
 **Drill-downs:** exceptions, slow queries, and slow requests are clickable. The agent sends the latest occurrences per fingerprint to your self-hosted hub — exception message, stack trace, request URL, slow-query SQL, duration, resource timings, and safe `context.*` metadata — so you can triage straight from the dashboard. Request payloads and query bindings are excluded.
 
@@ -107,7 +107,7 @@ See [Monitoring data flow and scheduled tasks](docs/monitoring-data-flow.md) for
 - **Token rotation:** rotating a token (dashboard → Instances) keeps the old one valid for 7 days.
 - **Outages:** if the hub is unreachable, the agent holds its watermark and retries next run. Pulse trims fine-grained data after ~1 hour, so longer outages appear as a marked data gap rather than silent flat-lines.
 - **Clocks:** instances should run NTP; the hub clamps wildly skewed buckets and flags observed skew.
-- **Upgrades:** version 0.4.2 updates the hub only, with no new migrations, dependencies, or configuration changes since 0.4.1. The bundled agent remains at 0.4.0. Deploy the included frontend assets, rebuild caches, and reload PHP-FPM through your normal deployment process; see the [0.4.2 upgrade checklist](docs/install.md#upgrading-to-042). When upgrading from an older version, also follow the [0.4.1 notification checklist](docs/install.md#upgrading-to-041) and the [0.4.0 scheduler/data-flow checklist](docs/install.md#upgrading-to-040).
+- **Upgrades:** version 0.4.3 updates the hub only and adds one migration. **Existing rules also receive the 10-minute alarm and 5-minute recovery delays**; review them after deployment, especially rules with a heartbeat timeout that already delays detection. Thresholds, destinations and cooldown settings are retained. The bundled agent remains at 0.4.0, with no dependency or environment changes. Deploy the included frontend assets, run migrations, rebuild caches, and reload PHP-FPM through your normal deployment process; see the [0.4.3 upgrade checklist](docs/install.md#upgrading-to-043). When upgrading from older versions, also follow the [0.4.2 history display notes](docs/install.md#upgrading-to-042), [0.4.1 notification checklist](docs/install.md#upgrading-to-041) and [0.4.0 scheduler/data-flow checklist](docs/install.md#upgrading-to-040).
 
 ## Development
 

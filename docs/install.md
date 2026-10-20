@@ -63,6 +63,36 @@ The monitored application's Laravel scheduler must run every minute as well:
 
 The agent's default export interval is five minutes. Confirmed completeness requires Pulse's direct `storage` ingest driver and `database` storage driver, with enabled, fully sampled supported recorders. Redis or custom Pulse pipelines do not confirm completeness. The exporter reads the configured `pulse.storage.database.connection`.
 
+## Upgrading to 0.4.3
+
+This is a hub-only update. The bundled agent remains at 0.4.0; monitored applications need no update for notification delays. There are no dependency or environment changes since 0.4.2.
+
+1. Back up the hub database and deploy the 0.4.3 hub code with the included `public/build/` assets through your normal deployment process. The server does not need Node or a separate frontend build.
+2. Install production dependencies and run `php artisan migrate --force`. The new migration is `2026_10_20_000001_add_alert_notification_delays`.
+3. Rebuild caches and reload the web PHP process. Keep the existing hub scheduler running every minute. Notification delivery remains synchronous; no queue worker or additional scheduled command is needed.
+4. In **Alerts**, review **Alarm delay (minutes)** and **Recovery delay (minutes)** for each rule. Both new and existing rules receive defaults of **10** and **5** respectively. Values must be whole minutes from **0 to 1440**; **0** means immediate action.
+
+Example deployment commands for PHP 8.4-FPM:
+
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+sudo service php8.4-fpm reload
+```
+
+Use the equivalent reload/restart for your hosting setup and PHP version. The migration retains thresholds, notification destinations, cooldown settings and incident history. It marks pre-update incidents as already attempted, preventing old alarms from being replayed. Those open incidents still require newly confirmed recovery checks and the configured recovery delay; recovery messages for pre-update incidents are skipped because their original notification destinations cannot be verified.
+
+**The alarm delay is additional to the rule condition.** For example, a 10-minute heartbeat timeout followed by the default 10-minute alarm delay means about 20 minutes without a heartbeat before external notification. For metric rules, the configured observation window is evaluated first, and the breach must then persist for the alarm delay. Review critical rules rather than assuming the migration preserves their previous notification timing.
+
+Internal incidents appear immediately. A six-minute data-flow interruption that then remains confirmed healthy closes internally after recovery confirmation, without an alarm/recovery message pair. Recovery requires fresh, advancing confirmation throughout its delay: missing or stale data resets that timer. Evaluation gaps longer than two minutes also restart continuity checks. The cooldown spaces external alarm attempts separately from these delays. Existing no-retry behavior remains in place.
+
+A recovery message is sent only to channels that successfully received the original alarm and still have matching destinations. Use **Test** to verify configured channels; it sends immediately and bypasses delays and cooldowns. See [Alert notification channels](alert-notifications.md) for the full rule and delivery behavior.
+
+If upgrading from older versions, also follow the [0.4.2 history display notes](#upgrading-to-042), [0.4.1 notification upgrade](#upgrading-to-041), including its two migrations and SMTP guidance, and [0.4.0 scheduler/data-flow upgrade](#upgrading-to-040).
+
 ## Upgrading to 0.4.2
 
 This is a hub-only update. The bundled agent remains at 0.4.0, and applications already using it need no update for the fleet history display. There are no new migrations, dependency updates, or configuration changes since 0.4.1.

@@ -5,6 +5,27 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-10-20
+
+### Added
+
+- Per-rule alarm and recovery delays, defaulting to 10 and 5 minutes respectively. Each accepts whole minutes from 0 to 1440; 0 means immediate action.
+- Visible waiting, recovery-confirmation, cooldown and suppressed-delivery states in alert history, while incidents are recorded internally as soon as a breach is observed.
+- Regression tests for delayed notification and recovery, interrupted or unverified observations, independent instance timers, cooldowns, legacy incidents, changed destinations, duplicate evaluation, and delay settings.
+
+### Changed
+
+- Alarm delivery requires a continuously breached condition for its configured delay. Recovery requires continuously confirmed healthy data and fresh, advancing coverage; missing or stale data resets recovery confirmation. A scheduler evaluation gap longer than two minutes resets continuity timers.
+- Recovery notifications are sent only to channels that successfully received the alarm and whose destinations still match. Short incidents close internally without an alarm/recovery message pair.
+- Cooldowns space external alarm attempts rather than hiding internal incidents. Rule edits, disabling and re-enabling restart continuity checks for open incidents. The Test action still sends immediately.
+
+### Fixed
+
+- Notification attempts are claimed before delivery to prevent duplicate sends during overlapping evaluations. Transport failures remain visible without automatic retries.
+- The migration marks historical incidents as already attempted so deployment cannot replay old alarms. Their delivery history is preserved; recovery notifications for pre-update incidents are skipped because the original destinations cannot be verified.
+
+This release updates the hub only and adds `2026_10_20_000001_add_alert_notification_delays`. **Existing rules also receive the 10-minute alarm and 5-minute recovery delays**; thresholds, destinations and cooldown settings are retained. The alarm delay is additional to existing rule conditions, including heartbeat timeouts. The bundled agent remains at 0.4.0. No dependency, environment or agent configuration changes are required. See the [upgrade checklist](docs/install.md#upgrading-to-043).
+
 ## [0.4.2] - 2026-10-19
 
 ### Added

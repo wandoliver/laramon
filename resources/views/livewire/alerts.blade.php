@@ -95,10 +95,28 @@
                     </div>
                 @endif
 
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="mb-1 block text-sm text-zinc-400">Alarm delay (minutes)</label>
+                        <input type="number" min="0" max="1440" step="1" wire:model="trigger_delay_minutes"
+                               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500">
+                        @error('trigger_delay_minutes') <p class="mt-1 text-sm text-rose-400">{{ $message }}</p> @enderror
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-sm text-zinc-400">Recovery delay (minutes)</label>
+                        <input type="number" min="0" max="1440" step="1" wire:model="recovery_delay_minutes"
+                               class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500">
+                        @error('recovery_delay_minutes') <p class="mt-1 text-sm text-rose-400">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+                <p class="text-xs text-zinc-500">Incidents appear here immediately. The alarm delay starts after the rule condition is breached (e.g. a 10-minute heartbeat threshold plus a 10-minute delay means about 20 minutes before notification). Teams and email wait for a continuous breach; recovery requires continuously confirmed healthy data. Set 0 for immediate action. Recovery messages only go to channels that received the alarm.</p>
+
                 <div>
                     <label class="mb-1 block text-sm text-zinc-400">Cooldown (minutes)</label>
                     <input type="number" wire:model="cooldown_minutes"
                            class="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-sky-500">
+                    <p class="mt-1 text-xs text-zinc-500">Minimum spacing between external alarm notifications for this rule and instance. Internal incidents are still recorded immediately.</p>
+                    @error('cooldown_minutes') <p class="mt-1 text-sm text-rose-400">{{ $message }}</p> @enderror
                 </div>
 
                 <div>
@@ -149,6 +167,7 @@
                                 </p>
                                 <p class="mt-0.5 text-xs text-zinc-500">
                                     Notifications: {{ implode(' + ', array_filter([$rule->webhook_url ? 'Teams' : null, $rule->email_recipients ? 'Email' : null])) ?: 'Internal only' }}
+                                    · alarm delay {{ $rule->trigger_delay_minutes }}m · recovery delay {{ $rule->recovery_delay_minutes }}m
                                 </p>
                             </div>
                             <div class="flex shrink-0 items-center gap-2">
@@ -201,6 +220,10 @@
                                 @endunless
                             </div>
 
+                            @if (! $event->resolved_at && $event->recovery_started_at)
+                                <p class="mt-1.5 text-xs text-amber-400">Recovery being confirmed · since {{ $event->recovery_started_at->format('d.m. H:i') }} UTC</p>
+                            @endif
+
                             @if (is_array($event->notification_status))
                                 <div class="mt-1.5 space-y-1 text-xs text-zinc-500">
                                     @foreach (['triggered' => 'Alarm', 'resolved' => 'Recovery'] as $phase => $label)
@@ -214,7 +237,7 @@
                                                     @foreach (['teams' => 'Teams', 'email' => 'Email'] as $channel => $channelLabel)
                                                         @php($status = $channels[$channel] ?? 'disabled')
                                                         <span class="{{ match ($status) { 'sent' => 'text-emerald-400', 'failed' => 'text-amber-400', default => 'text-zinc-500' } }}">
-                                                            {{ $channelLabel }}: {{ match ($status) { 'sent' => 'delivered', 'failed' => 'delivery failed', 'pending' => 'pending', default => 'not configured' } }}
+                                                            {{ $channelLabel }}: {{ match ($status) { 'sent' => 'delivered', 'failed' => 'delivery failed', 'pending' => 'pending', 'waiting' => 'waiting for delay', 'cooldown' => 'waiting for cooldown', 'suppressed' => 'not sent (closed before delivery)', 'skipped' => 'not sent (no matching delivered alarm)', 'cancelled' => 'not sent (cancelled)', default => 'not configured' } }}
                                                         </span>
                                                     @endforeach
                                                 @endif

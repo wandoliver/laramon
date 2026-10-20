@@ -363,6 +363,7 @@ class AlertEvaluatorDataFlowTest extends TestCase
             'cooldown_minutes' => 30,
             'webhook_url' => 'https://teams.test/webhook',
             'enabled' => true,
+            'trigger_delay_minutes' => 0, 'recovery_delay_minutes' => 0,
         ], $overrides));
     }
 
@@ -374,6 +375,9 @@ class AlertEvaluatorDataFlowTest extends TestCase
             'value' => 20,
             'triggered_at' => now()->subMinutes(20),
             'notified' => true,
+            'notification_attempted_at' => now()->subMinutes(20),
+            'notification_status' => ['triggered' => ['teams' => 'sent', 'email' => 'disabled']],
+            'notification_targets' => ['teams' => hash('sha256', $rule->webhook_url), 'email' => []],
         ]);
     }
 

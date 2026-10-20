@@ -21,6 +21,11 @@ class AlertRule extends Model
     /** Synthetic metric: 0 only for a verified, healthy monitoring data flow. */
     public const TYPE_DATA_FLOW = 'data_flow';
 
+    protected $attributes = [
+        'trigger_delay_minutes' => 10,
+        'recovery_delay_minutes' => 5,
+    ];
+
     protected $fillable = [
         'instance_id',
         'name',
@@ -31,6 +36,8 @@ class AlertRule extends Model
         'threshold',
         'window_minutes',
         'cooldown_minutes',
+        'trigger_delay_minutes',
+        'recovery_delay_minutes',
         'webhook_url',
         'email_recipients',
         'enabled',
@@ -40,6 +47,8 @@ class AlertRule extends Model
     {
         return [
             'threshold' => 'float',
+            'trigger_delay_minutes' => 'integer',
+            'recovery_delay_minutes' => 'integer',
             'enabled' => 'boolean',
             'email_recipients' => 'array',
         ];

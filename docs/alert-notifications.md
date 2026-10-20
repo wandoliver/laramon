@@ -11,11 +11,39 @@ notifications are optional and configured independently for each rule:
 | Configured | Configured | Internal incidents, Teams and email |
 
 Existing rules retain their Teams webhook. No recipients or external notification
-channels are enabled automatically. Notification settings do not change breach
-thresholds, cooldowns or the requirement for confirmed data before automatic
-recovery. Manual resolution keeps its existing behavior and sends no notification.
+channels are enabled automatically. Notification delays do not change breach
+thresholds or the requirement for confirmed data before automatic recovery.
+Manual resolution keeps its existing behavior and sends no notification.
 
 ## Rule configuration
+
+**Alarm delay (minutes)** defaults to **10**. A breach creates an internal
+incident immediately, but Teams and email are sent only after the breach has
+continued for the configured delay. A short incident remains in Recent events
+without an alarm or recovery message. The alarm delay is additional to the rule
+condition: a 10-minute heartbeat threshold plus a 10-minute alarm delay means
+about 20 minutes without a heartbeat before notification. For metric rules, the
+condition is evaluated over its configured window first; the alarm delay then
+requires that condition to remain breached continuously.
+
+**Recovery delay (minutes)** defaults to **5**. The incident remains open while
+healthy data is being confirmed continuously. A new breach, missing data, stale
+coverage or another unverified evaluation cancels that recovery timer. Missing
+or stale data never confirms recovery. Recent events show **Recovery being
+confirmed** while this timer runs. A recovery notification is sent only to a
+channel that successfully received the alarm and whose destination is unchanged.
+
+Both delays are configurable per rule, apply independently to each instance,
+and accept whole minutes from **0 to 1440**. Set **0** for immediate action.
+Interrupted scheduler evaluation also resets the continuity timers; an elapsed
+wall-clock delay without fresh checks does not prove a continuous state. Editing,
+disabling or re-enabling a rule also restarts continuity checks for its open
+incidents.
+
+**Cooldown (minutes)** spaces external alarm notifications for the same rule and
+instance. It does not postpone internal incident recording, replace either
+delay, or suppress recovery checks. These controls do not send repeated reminders
+for an already open incident.
 
 Built-in metrics are always available in the **Metric** dropdown, including
 `job:failed` and `scheduled_task:failed`, so rules can be configured before the
@@ -36,17 +64,22 @@ request contents.
 **Test** checks the configured channels without creating an incident. For a rule
 without external channels it explains that the rule is internal-only and sends
 nothing. Testing an email rule sends a message using the alarm template with the
-status **Test**.
+status **Test**. Tests send immediately, bypassing both delays and the cooldown.
 
 Incidents are stored before external delivery is attempted. Recent events show
 the trigger and recovery delivery results separately. Internal-only is distinct
 from a failed send; failure of one channel does not prevent the other channel.
 Editing a rule's channels does not rewrite an existing incident's delivery history.
-Historical incidents retain their original Teams result.
+Historical incidents retain their original Teams result. Waiting for a delay
+or cooldown is distinct from failed delivery. Short incidents are marked
+**not sent (closed before delivery)**; recoveries without a delivered alarm or with a
+changed destination are marked **not sent (no matching delivered alarm)**.
 
 Sending is synchronous and requires no queue worker. This change does not add
 automatic delivery retries or reminders for an already open incident. A failed
-delivery remains visible in Recent events. A successful send means the configured
+delivery remains visible in Recent events. A notification cancelled before
+delivery is marked **not sent (cancelled)** and is terminal; it is not retried
+automatically. A successful send means the configured
 transport accepted the message; it does not establish inbox delivery.
 
 ## Central email templates
@@ -86,10 +119,20 @@ sudo service php8.4-fpm reload
 ```
 
 Use the equivalent process reload for your hosting setup and PHP version so
-browser requests also load the new configuration. The two new migrations are
-`2026_10_19_000001_add_alert_notification_channels` and
-`2026_10_19_000002_create_alert_email_templates_table`. The update is hub-only;
-the bundled agent remains at 0.4.0.
+browser requests also load the new configuration. Notification channels and
+email templates use `2026_10_19_000001_add_alert_notification_channels` and
+`2026_10_19_000002_create_alert_email_templates_table`.
+
+The delay update adds
+`2026_10_20_000001_add_alert_notification_delays`. Running it sets the **10-minute
+alarm delay** and **5-minute recovery delay** for all existing rules as well as
+new ones. It preserves incident and delivery history and marks all pre-update
+incidents as already attempted, so deployment does not resend old alarm messages.
+Open incidents still need newly confirmed recovery checks and the configured
+recovery delay. Historical delivery results are retained, but recovery messages
+for pre-update incidents are skipped because their original destinations cannot
+be safely verified. Existing rule thresholds, destinations and cooldowns are retained.
+The update is hub-only; no agent update or configuration change is required.
 
 Keep the monitoring scheduler running. Existing Teams-only rules continue to
 work. New internal-only rules need no mail configuration.

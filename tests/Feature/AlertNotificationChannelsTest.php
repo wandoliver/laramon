@@ -225,6 +225,7 @@ class AlertNotificationChannelsTest extends TestCase
             'metric_type' => 'exception', 'aggregate' => 'count', 'operator' => '>', 'threshold' => 10,
             'window_minutes' => 15, 'cooldown_minutes' => 5,
             'webhook_url' => null, 'email_recipients' => [], 'enabled' => true,
+            'trigger_delay_minutes' => 0, 'recovery_delay_minutes' => 0,
             ...$overrides,
         ]);
     }

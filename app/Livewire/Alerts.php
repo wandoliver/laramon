@@ -33,6 +33,10 @@ class Alerts extends Component
 
     public int $cooldown_minutes = 30;
 
+    public $trigger_delay_minutes = 10;
+
+    public $recovery_delay_minutes = 5;
+
     public string $webhook_url = '';
 
     public string $email_recipients = '';
@@ -65,6 +69,8 @@ class Alerts extends Component
             'threshold' => ['required', 'numeric'],
             'window_minutes' => ['required', 'integer', 'min:5', 'max:1440'],
             'cooldown_minutes' => ['required', 'integer', 'min:0', 'max:1440'],
+            'trigger_delay_minutes' => ['required', 'integer', 'min:0', 'max:1440'],
+            'recovery_delay_minutes' => ['required', 'integer', 'min:0', 'max:1440'],
             'webhook_url' => ['nullable', 'url:http,https', 'max:500'],
             'email_recipients' => ['nullable', 'string', 'max:3000', function (string $attribute, mixed $value, \Closure $fail): void {
                 $input = str_replace("\r\n", "\n", $value);
@@ -99,10 +105,14 @@ class Alerts extends Component
         $data['webhook_url'] = $data['webhook_url'] !== '' ? $data['webhook_url'] : null;
         $data['email_recipients'] = $this->parseEmailRecipients($data['email_recipients'] ?? '');
 
-        AlertRule::query()->updateOrCreate(
-            ['id' => $this->editingId],
-            $data + ['enabled' => true],
-        );
+        DB::transaction(function () use ($data): void {
+            $rule = $this->editingId !== null
+                ? AlertRule::query()->lockForUpdate()->findOrFail($this->editingId)
+                : new AlertRule;
+
+            $rule->fill($data + ['enabled' => true])->save();
+            $this->resetEventContinuity($rule);
+        });
 
         $this->resetForm();
     }
@@ -121,6 +131,8 @@ class Alerts extends Component
         $this->threshold = (string) $rule->threshold;
         $this->window_minutes = $rule->window_minutes;
         $this->cooldown_minutes = $rule->cooldown_minutes;
+        $this->trigger_delay_minutes = $rule->trigger_delay_minutes;
+        $this->recovery_delay_minutes = $rule->recovery_delay_minutes;
         $this->webhook_url = $rule->webhook_url ?? '';
         $this->email_recipients = implode(', ', $rule->email_recipients ?? []);
     }
@@ -133,12 +145,27 @@ class Alerts extends Component
         $this->operator = '>';
         $this->window_minutes = 15;
         $this->cooldown_minutes = 30;
+        $this->trigger_delay_minutes = 10;
+        $this->recovery_delay_minutes = 5;
     }
 
     public function toggle(int $ruleId): void
     {
-        $rule = AlertRule::query()->findOrFail($ruleId);
-        $rule->forceFill(['enabled' => ! $rule->enabled])->save();
+        DB::transaction(function () use ($ruleId): void {
+            $rule = AlertRule::query()->lockForUpdate()->findOrFail($ruleId);
+            $rule->forceFill(['enabled' => ! $rule->enabled])->save();
+            $this->resetEventContinuity($rule);
+        });
+    }
+
+    private function resetEventContinuity(AlertRule $rule): void
+    {
+        // Evaluations and settings changes both lock the rule before its events.
+        AlertEvent::query()->where('alert_rule_id', $rule->id)->whereNull('resolved_at')->update([
+            'breach_started_at' => null,
+            'recovery_started_at' => null,
+            'last_evaluated_at' => null,
+        ]);
     }
 
     public function delete(int $ruleId): void
@@ -210,16 +237,34 @@ class Alerts extends Component
             'resolutionComment' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $event = AlertEvent::query()
-            ->whereKey($data['resolvingEventId'])
-            ->whereNull('resolved_at')
-            ->firstOrFail();
+        DB::transaction(function () use ($data): void {
+            $ruleId = AlertEvent::query()->whereKey($data['resolvingEventId'])->value('alert_rule_id');
+            AlertRule::query()->lockForUpdate()->findOrFail($ruleId);
+            $event = AlertEvent::query()
+                ->whereKey($data['resolvingEventId'])
+                ->whereNull('resolved_at')
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $event->forceFill([
-            'resolved_at' => now(),
-            'resolved_by_user_id' => auth()->id(),
-            'resolved_comment' => $data['resolutionComment'] !== '' ? $data['resolutionComment'] : null,
-        ])->save();
+            $statuses = $event->notification_status;
+            if (is_array($statuses['triggered'] ?? null)) {
+                foreach ($statuses['triggered'] as $channel => $status) {
+                    if (in_array($status, ['waiting', 'cooldown'], true)) {
+                        $statuses['triggered'][$channel] = 'suppressed';
+                    }
+                }
+            }
+
+            $event->forceFill([
+                'resolved_at' => now(),
+                'resolved_by_user_id' => auth()->id(),
+                'resolved_comment' => $data['resolutionComment'] !== '' ? $data['resolutionComment'] : null,
+                'breach_started_at' => null,
+                'recovery_started_at' => null,
+                'last_evaluated_at' => null,
+                'notification_status' => $statuses,
+            ])->save();
+        });
 
         $this->cancelResolution();
     }

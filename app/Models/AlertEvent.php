@@ -19,6 +19,11 @@ class AlertEvent extends Model
         'resolved_comment',
         'notified',
         'notification_status',
+        'breach_started_at',
+        'recovery_started_at',
+        'last_evaluated_at',
+        'notification_attempted_at',
+        'notification_targets',
     ];
 
     protected function casts(): array
@@ -29,6 +34,11 @@ class AlertEvent extends Model
             'resolved_at' => 'datetime',
             'notified' => 'boolean',
             'notification_status' => 'array',
+            'breach_started_at' => 'datetime',
+            'recovery_started_at' => 'datetime',
+            'last_evaluated_at' => 'datetime',
+            'notification_attempted_at' => 'datetime',
+            'notification_targets' => 'array',
         ];
     }
 
