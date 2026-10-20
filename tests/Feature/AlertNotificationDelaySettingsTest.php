@@ -108,20 +108,21 @@ class AlertNotificationDelaySettingsTest extends TestCase
         $rule = AlertRule::query()->sole();
         $instance = Instance::factory()->create();
 
-        foreach (['waiting', 'cooldown', 'suppressed', 'skipped', 'cancelled'] as $status) {
+        foreach (['waiting', 'recovering', 'cooldown', 'suppressed', 'skipped', 'cancelled'] as $status) {
             AlertEvent::query()->create([
                 'alert_rule_id' => $rule->id,
                 'instance_id' => $instance->id,
                 'value' => 20,
                 'triggered_at' => now(),
-                'recovery_started_at' => $status === 'waiting' ? now() : null,
-                'notification_status' => ['triggered' => ['teams' => $status, 'email' => 'disabled']],
+                'recovery_started_at' => $status === 'recovering' ? now() : null,
+                'notification_status' => ['triggered' => ['teams' => $status === 'recovering' ? 'waiting' : $status, 'email' => 'disabled']],
             ]);
         }
 
         $this->form()
             ->assertSee('Recovery being confirmed')
             ->assertSee('Teams: waiting for delay')
+            ->assertSee('Teams: held during recovery')
             ->assertSee('Teams: waiting for cooldown')
             ->assertSee('Teams: not sent (closed before delivery)')
             ->assertSee('Teams: not sent (no matching delivered alarm)')

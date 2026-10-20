@@ -21,6 +21,22 @@ Invalid clocks, excessive clock skew, partial exports, and missing confirmation
 leave monitoring unverified. A stale heartbeat can also indicate a stopped
 application scheduler.
 
+### Export in progress versus an incident
+
+A normal export is displayed as **Export in progress** while the hub waits for
+its final confirmation. This neutral state is available only when the previous
+confirmation, heartbeat and accepted export are still fresh and their clocks are
+valid. It lasts at most five minutes from the first chunk received by the hub;
+later chunks and retries do not extend that deadline. An export without a
+previous usable confirmation, an overdue transfer, invalid timestamps or stale
+signals remains an actual unverified data-flow condition.
+
+An in-progress export does not create a new data-flow incident. It does not
+confirm metric totals, imply zero errors, or resolve an existing incident. A
+running recovery check preserves its original start time across this bounded
+transfer, but cannot complete until a fresh export has actually been confirmed.
+Missing, invalid or stale data still cancels recovery.
+
 The fleet's 24-hour history indicator shows how much of the totals window is
 confirmed, for example **6h 40m of 24h confirmed** and **17h 20m still
 unconfirmed**. **Confirmed** in the export panel refers to its displayed interval;
@@ -90,6 +106,14 @@ No rule, email recipients, or webhook is created automatically. Configured
 notifications send alert details through the selected mail transport or webhook;
 metric storage remains on your hub. See [Alert notification channels](alert-notifications.md)
 for editable email templates and per-channel delivery status.
+
+Data-flow incidents show **Reason** from the evaluation that opened the incident.
+If a later failing evaluation identifies another issue, **Latest issue** shows
+that issue and when it was observed. Reasons use a fixed technical catalogue;
+agent-supplied messages are never displayed as incident reasons. Healthy or
+in-progress evaluations do not replace the recorded failure reason. Incidents
+created before reason recording was introduced show **Reason was not recorded**;
+the current state is not used to invent a historical cause.
 
 ## Scheduled task outcomes
 
@@ -164,6 +188,12 @@ mappings. Expectations are suppressed if Pulse, its scheduler recorder, or these
 mappings are disabled. Keep both the hub scheduler and application scheduler
 running, and reload cached configuration and long-running workers through your
 normal deployment process.
+
+The export-state and incident-reason update is hub-only. Run
+`php artisan migrate --force` to add
+`2026_10_20_000002_add_alert_event_reasons`, then rebuild the usual application
+caches and reload PHP-FPM. No agent deployment or configuration change is needed.
+Existing incidents and notification settings are preserved.
 
 See the [0.4.0 upgrade checklist](install.md#upgrading-to-040) for the deployment
 steps.

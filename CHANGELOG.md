@@ -5,6 +5,25 @@ All notable changes to LaraMon will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-10-20
+
+### Added
+
+- A neutral **Export in progress** state for normal transfers with fresh prior completeness confirmation, heartbeat and accepted export. The hub grants less than five minutes from its first chunk receipt; subsequent chunks and retries cannot extend the deadline.
+- Recorded initial and latest data-flow incident reasons, displayed using a fixed set of server-defined descriptions. Historical incidents without a recorded reason show **Reason was not recorded.**
+- Regression tests for bounded transfers, immutable deadlines, invalid or stale proofs, strict recovery, incident reason rendering, and unaffected metric breaches.
+
+### Changed
+
+- A bounded normal transfer does not open a data-flow incident or send its alarm. It may preserve an existing recovery candidate, but cannot start or complete recovery. Resolution still requires healthy flow and fresh, advancing final confirmation; missing, stale, invalid or overdue data cannot confirm recovery.
+- Undelivered alarms show **held during recovery** while recovery is being confirmed.
+
+### Fixed
+
+- Routine chunked exports no longer create transient data-flow incidents or repeatedly interrupt otherwise valid recovery candidates. Real heartbeat, clock, completeness and export failures remain visible and prevent recovery.
+
+This release updates the hub only and adds `2026_10_20_000002_add_alert_event_reasons`. The migration adds nullable reason fields without inventing historical causes. Existing thresholds, destinations, cooldowns and configured notification delays are preserved; the defaults remain 10 minutes before an alarm and 5 minutes before recovery. The bundled agent remains at 0.4.0. No dependency, environment or agent configuration changes are required. See the [upgrade checklist](docs/install.md#upgrading-to-044).
+
 ## [0.4.3] - 2026-10-20
 
 ### Added

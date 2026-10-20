@@ -103,16 +103,25 @@ class IngestController extends Controller
                 $meta = is_array($instance->meta) ? $instance->meta : [];
                 if (isset($data['coverage'])) {
                     $previous = is_array($meta['data_flow'] ?? null) ? $meta['data_flow'] : null;
+                    $previousThrough = $flow->snapshot($instance, $receivedAt->getTimestamp())['coverage']['through'];
                     $meta['data_flow'] = $flow->confirm(
                         $previous,
                         $data['coverage'], $receivedAt->getTimestamp(), $clockSkew,
                     );
-                    if ($meta['data_flow']['covered_through'] > ($previous['covered_through'] ?? -1)) {
+                    if ($meta['data_flow']['covered_through'] > ($previousThrough ?? -1)) {
                         $meta['data_flow_pending'] = false;
+                        unset($meta['data_flow_pending_since']);
                     }
                 } else {
-                    // Even same-second partial exports revoke the previous all-clear.
-                    // A duplicate or old final acknowledgement cannot clear this flag.
+                    // The first server receipt fixes the deadline. Later chunks,
+                    // retries or legacy/malformed pending state must never renew it.
+                    if (($meta['data_flow_pending'] ?? false) === false) {
+                        $meta['data_flow_pending_since'] = $receivedAt->getTimestamp();
+                    } elseif (($meta['data_flow_pending'] ?? false) !== true) {
+                        // Malformed legacy state must not acquire a grace period
+                        // merely because a later chunk normalizes the flag.
+                        unset($meta['data_flow_pending_since']);
+                    }
                     $meta['data_flow_pending'] = true;
                 }
 

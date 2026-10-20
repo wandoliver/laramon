@@ -5,11 +5,12 @@
         'healthy' => 'bg-emerald-400',
         'degraded' => 'bg-amber-400',
         'down' => 'bg-rose-500',
+        'transferring' => 'bg-sky-400',
         default => 'bg-zinc-600',
     };
 @endphp
 
-<span {{ $attributes->merge(['class' => 'relative flex size-2.5 shrink-0']) }} title="{{ ucfirst($health) }}">
+<span {{ $attributes->merge(['class' => 'relative flex size-2.5 shrink-0']) }} title="{{ $health === 'transferring' ? 'Export in progress' : ucfirst($health) }}">
     @if ($health === 'down')
         <span class="absolute inline-flex h-full w-full animate-ping rounded-full {{ $color }} opacity-60"></span>
     @endif

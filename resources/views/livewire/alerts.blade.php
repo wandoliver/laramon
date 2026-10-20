@@ -47,7 +47,7 @@
                 </div>
 
                 @if ($metric_type === 'data_flow')
-                    <p class="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-400">Alerts when heartbeat, accepted exports or confirmed coverage are missing, stale or incomplete. Recovery requires confirmed fresh data flow.</p>
+                    <p class="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-zinc-400">Alerts when heartbeat, accepted exports or confirmed coverage are missing, stale or incomplete. Normal exports with fresh prior confirmation have up to five minutes to finish. Recovery requires confirmed fresh data flow.</p>
                 @elseif ($metric_type === 'heartbeat')
                     <div>
                         <label class="mb-1 block text-sm text-zinc-400">Alert after silent minutes</label>
@@ -220,6 +220,18 @@
                                 @endunless
                             </div>
 
+                            @if ($event->reason_code !== null || $event->last_reason_code !== null || $event->rule?->metric_type === \App\Models\AlertRule::TYPE_DATA_FLOW)
+                                <p class="mt-1.5 text-xs text-zinc-400">Reason: {{ \App\Services\DataFlowStatus::reasonText($event->reason_code) }}</p>
+                                @if ($event->last_reason_code !== null && $event->last_reason_code !== $event->reason_code)
+                                    <p class="mt-1 text-xs text-zinc-500">
+                                        Latest issue: {{ \App\Services\DataFlowStatus::reasonText($event->last_reason_code) }}
+                                        @if ($event->last_reason_at)
+                                            · {{ $event->last_reason_at->format('d.m. H:i') }} UTC
+                                        @endif
+                                    </p>
+                                @endif
+                            @endif
+
                             @if (! $event->resolved_at && $event->recovery_started_at)
                                 <p class="mt-1.5 text-xs text-amber-400">Recovery being confirmed · since {{ $event->recovery_started_at->format('d.m. H:i') }} UTC</p>
                             @endif
@@ -237,7 +249,7 @@
                                                     @foreach (['teams' => 'Teams', 'email' => 'Email'] as $channel => $channelLabel)
                                                         @php($status = $channels[$channel] ?? 'disabled')
                                                         <span class="{{ match ($status) { 'sent' => 'text-emerald-400', 'failed' => 'text-amber-400', default => 'text-zinc-500' } }}">
-                                                            {{ $channelLabel }}: {{ match ($status) { 'sent' => 'delivered', 'failed' => 'delivery failed', 'pending' => 'pending', 'waiting' => 'waiting for delay', 'cooldown' => 'waiting for cooldown', 'suppressed' => 'not sent (closed before delivery)', 'skipped' => 'not sent (no matching delivered alarm)', 'cancelled' => 'not sent (cancelled)', default => 'not configured' } }}
+                                                            {{ $channelLabel }}: {{ match ($status) { 'sent' => 'delivered', 'failed' => 'delivery failed', 'pending' => 'pending', 'waiting' => ! $event->resolved_at && $event->recovery_started_at !== null ? 'held during recovery' : 'waiting for delay', 'cooldown' => 'waiting for cooldown', 'suppressed' => 'not sent (closed before delivery)', 'skipped' => 'not sent (no matching delivered alarm)', 'cancelled' => 'not sent (cancelled)', default => 'not configured' } }}
                                                         </span>
                                                     @endforeach
                                                 @endif

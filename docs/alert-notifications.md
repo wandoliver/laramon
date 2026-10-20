@@ -33,6 +33,15 @@ or stale data never confirms recovery. Recent events show **Recovery being
 confirmed** while this timer runs. A recovery notification is sent only to a
 channel that successfully received the alarm and whose destination is unchanged.
 
+A bounded normal export with fresh prior confirmation is neutral while its final
+confirmation is pending. It creates no new data-flow incident and preserves an
+existing recovery candidate; it cannot complete recovery or confirm metric totals. The hub
+allows at most five minutes from the first received chunk, without extending the
+deadline for later chunks or retries. Missing prior confirmation, an overdue
+transfer, stale data or invalid clocks still prevent recovery and remain actual
+data-flow issues. See [Monitoring data flow](monitoring-data-flow.md) for the full
+conditions.
+
 Both delays are configurable per rule, apply independently to each instance,
 and accept whole minutes from **0 to 1440**. Set **0** for immediate action.
 Interrupted scheduler evaluation also resets the continuity timers; an elapsed
@@ -74,6 +83,14 @@ Historical incidents retain their original Teams result. Waiting for a delay
 or cooldown is distinct from failed delivery. Short incidents are marked
 **not sent (closed before delivery)**; recoveries without a delivered alarm or with a
 changed destination are marked **not sent (no matching delivered alarm)**.
+An alarm that has not been sent is shown as **held during recovery** while
+recovery is being confirmed; this is distinct from waiting for a new continuous
+breach to reach its alarm delay.
+
+Data-flow incidents also show the recorded opening **Reason**, with a timestamped
+**Latest issue** if the failing condition changes. Only fixed, server-defined
+reason labels are displayed. Older incidents without recorded reasons explicitly
+show **Reason was not recorded** rather than inferring a cause from current data.
 
 Sending is synchronous and requires no queue worker. This change does not add
 automatic delivery retries or reminders for an already open incident. A failed
@@ -133,6 +150,12 @@ recovery delay. Historical delivery results are retained, but recovery messages
 for pre-update incidents are skipped because their original destinations cannot
 be safely verified. Existing rule thresholds, destinations and cooldowns are retained.
 The update is hub-only; no agent update or configuration change is required.
+
+The normal-export and incident-reason update adds
+`2026_10_20_000002_add_alert_event_reasons`. Run the same migration, cache rebuild
+and PHP-FPM reload steps above. It adds nullable reason fields without rewriting
+existing incident history or changing notification destinations and delays. No
+agent update is required.
 
 Keep the monitoring scheduler running. Existing Teams-only rules continue to
 work. New internal-only rules need no mail configuration.

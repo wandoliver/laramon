@@ -63,6 +63,36 @@ The monitored application's Laravel scheduler must run every minute as well:
 
 The agent's default export interval is five minutes. Confirmed completeness requires Pulse's direct `storage` ingest driver and `database` storage driver, with enabled, fully sampled supported recorders. Redis or custom Pulse pipelines do not confirm completeness. The exporter reads the configured `pulse.storage.database.connection`.
 
+## Upgrading to 0.4.4
+
+This is a hub-only update. The bundled agent remains at 0.4.0; monitored applications need no update for the transfer state or incident reasons. There are no dependency or environment changes since 0.4.3.
+
+1. Back up the hub database and deploy the 0.4.4 hub code with the included `public/build/` assets through your normal deployment process. The server does not need Node or a separate frontend build.
+2. Install production dependencies and run `php artisan migrate --force`. The new migration is `2026_10_20_000002_add_alert_event_reasons`; it adds nullable reason fields without rewriting old incident causes.
+3. Rebuild caches and reload the web PHP process. Keep the existing hub scheduler running every minute. No new command, queue worker or notification channel is required.
+4. Check **Monitoring data flow** and **Alerts**. Normal transfers can show **Export in progress**. Actual data-flow incidents display their initial reason and a different latest reason when applicable. Older incidents without a stored cause show **Reason was not recorded.**
+
+Example deployment commands for PHP 8.4-FPM:
+
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+sudo service php8.4-fpm reload
+```
+
+Use the equivalent reload/restart for your hosting setup and PHP version. Existing incident history, rule thresholds, notification destinations, cooldowns and configured delays are preserved. The default alarm and recovery delays remain **10** and **5** minutes; this release does not reset existing rules.
+
+The neutral transfer state requires a fresh, previously complete confirmation, a fresh heartbeat and accepted export, and valid clocks. It applies only while less than five minutes have elapsed since the first chunk was received by the hub. Subsequent chunks, retries and old confirmations cannot renew that deadline. Missing or invalid timing metadata receives no new grace period. Missing, stale or invalid proof, heartbeat or export data still produces an unverified or unhealthy state; an overdue transfer is an actual data-flow issue.
+
+A bounded normal transfer does not create a data-flow incident or send its alarm, and it does not verify metric totals or missing records. An existing data-flow recovery candidate can retain its start time across this state, but recovery cannot start or finish during the transfer. The hub still needs healthy flow and fresh, advancing final confirmation after the required recovery delay. Missing, stale, invalid or overdue data cancels recovery, and scheduler evaluation gaps longer than two minutes restart continuity checks. Other metric breaches continue to be evaluated. See [Monitoring data flow](monitoring-data-flow.md) and [Alert notification channels](alert-notifications.md) for the full behavior.
+
+Incident reasons use fixed server-defined descriptions. Initial causes are preserved once recorded; later actual failures update the latest reason. Successful or in-progress exports do not overwrite the last failure reason. The update does not reconstruct causes for historical incidents.
+
+If upgrading from older versions, also follow the [0.4.3 delay checklist](#upgrading-to-043), [0.4.2 history display notes](#upgrading-to-042), [0.4.1 notification upgrade](#upgrading-to-041) and [0.4.0 scheduler/data-flow upgrade](#upgrading-to-040).
+
 ## Upgrading to 0.4.3
 
 This is a hub-only update. The bundled agent remains at 0.4.0; monitored applications need no update for notification delays. There are no dependency or environment changes since 0.4.2.

@@ -24,6 +24,9 @@ class AlertEvent extends Model
         'last_evaluated_at',
         'notification_attempted_at',
         'notification_targets',
+        'reason_code',
+        'last_reason_code',
+        'last_reason_at',
     ];
 
     protected function casts(): array
@@ -39,6 +42,7 @@ class AlertEvent extends Model
             'last_evaluated_at' => 'datetime',
             'notification_attempted_at' => 'datetime',
             'notification_targets' => 'array',
+            'last_reason_at' => 'datetime',
         ];
     }
 

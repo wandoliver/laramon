@@ -66,7 +66,10 @@
                         @if ($card['totals_through'] !== null)
                             <p class="mt-2 text-xs text-zinc-500">24-hour totals through {{ \Illuminate\Support\Carbon::createFromTimestamp($card['totals_through'])->format('d.m H:i') }} UTC.</p>
                         @endif
-                        @if ($card['data_flow']['state'] !== 'healthy')
+                        @if ($card['data_flow']['state'] === 'transferring')
+                            <p class="mt-2 text-xs text-sky-300">Export in progress. Waiting for completion confirmation.</p>
+                            <p class="mt-1 text-xs text-zinc-500">Totals remain unconfirmed until the export completes.</p>
+                        @elseif ($card['data_flow']['state'] !== 'healthy')
                             <p class="mt-2 text-xs text-amber-400">{{ $card['data_flow']['reason'] }} Missing data cannot confirm recovery.</p>
                         @endif
                         @if (! $card['requests_verified'] || ! $card['exceptions_verified'] || ! $card['failed_jobs_verified'])

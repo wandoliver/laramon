@@ -8,12 +8,13 @@
                 'healthy' => $key === 'coverage' ? 'Confirmed' : 'Fresh',
                 'stale' => 'Stale',
                 'warming_up' => 'Building coverage',
+                'transferring' => 'Export in progress',
                 default => 'Unknown',
             };
         @endphp
         <div>
             <dt class="text-zinc-500">{{ $label }}</dt>
-            <dd class="mt-0.5 {{ $status === 'healthy' ? 'text-zinc-300' : 'text-amber-400' }}">
+            <dd class="mt-0.5 {{ match ($status) { 'healthy' => 'text-zinc-300', 'transferring' => 'text-sky-300', default => 'text-amber-400' } }}">
                 {{ $text }}
                 @if ($key !== 'coverage' && $flow[$key]['timestamp'] !== null)
                     <span class="text-zinc-500">· {{ \Illuminate\Support\Carbon::createFromTimestamp($flow[$key]['timestamp'])->diffForHumans(short: true) }}</span>

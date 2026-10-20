@@ -35,7 +35,10 @@
     <div class="mb-4 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
         <h2 class="mb-3 text-sm font-medium text-zinc-300">Monitoring data flow</h2>
         <x-data-flow-status :flow="$dataFlow" />
-        @if ($dataFlow['state'] !== 'healthy')
+        @if ($dataFlow['state'] === 'transferring')
+            <p class="mt-3 text-sm text-sky-300" role="status">Export in progress. Waiting for completion confirmation.</p>
+            <p class="mt-1 text-xs text-zinc-500">Totals remain unconfirmed until the export completes.</p>
+        @elseif ($dataFlow['state'] !== 'healthy')
             <p class="mt-3 text-sm text-amber-400" role="status">{{ $dataFlow['reason'] }} Missing or stale data cannot confirm recovery.</p>
         @endif
         <p class="mt-3 text-xs text-zinc-500">Charts and tables show received history. Unconfirmed periods may contain gaps; empty charts and missing records do not confirm that no errors occurred.</p>

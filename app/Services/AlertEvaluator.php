@@ -65,6 +65,7 @@ class AlertEvaluator
                     'value' => $value, 'triggered_at' => $now, 'notified' => false,
                     'breach_started_at' => $now, 'last_evaluated_at' => $now,
                     'notification_status' => ['triggered' => $this->waitingStatus($rule)],
+                    'reason_code' => $observation['reason_code'] ?? null,
                 ]);
             }
 
@@ -75,9 +76,22 @@ class AlertEvaluator
             }
             $event->last_evaluated_at = $now;
 
+            if (($observation['transferring'] ?? false) === true) {
+                // A bounded transfer cannot start or resolve recovery. Preserve
+                // its candidate only while evaluation itself stays continuous.
+                $event->breach_started_at = null;
+                $event->save();
+
+                return null;
+            }
+
             if ($provenBreach) {
                 $event->recovery_started_at = null;
                 $event->breach_started_at ??= $now;
+                if (isset($observation['reason_code'])) {
+                    $event->last_reason_code = $observation['reason_code'];
+                    $event->last_reason_at = $now;
+                }
                 $event->save();
                 if ($this->alarmAttempted($event)
                     || $now->lt($event->breach_started_at->copy()->addMinutes($this->delay($rule->trigger_delay_minutes, 10)))) {
@@ -284,7 +298,7 @@ class AlertEvaluator
      * An observation may prove a breach before a full window is available.
      * Only fresh, complete observations can prove recovery.
      *
-     * @return array{value: ?float, complete: bool, through: ?int}
+     * @return array{value: ?float, complete: bool, through: ?int, transferring?: bool, reason_code?: string}
      */
     protected function currentObservation(AlertRule $rule, Instance $instance): array
     {
@@ -292,7 +306,13 @@ class AlertEvaluator
         $healthy = $status['state'] === 'healthy';
 
         if ($rule->isDataFlowRule()) {
-            return ['value' => $healthy ? 0.0 : 1.0, 'complete' => $healthy, 'through' => $status['coverage']['confirmed_at']];
+            $transferring = $status['state'] === 'transferring';
+
+            return [
+                'value' => $transferring ? null : ($healthy ? 0.0 : 1.0),
+                'complete' => $healthy, 'through' => $status['coverage']['confirmed_at'],
+                'transferring' => $transferring, 'reason_code' => $status['reason_code'],
+            ];
         }
 
         if ($rule->isHeartbeatRule()) {

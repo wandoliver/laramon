@@ -204,12 +204,12 @@ class DataFlowIngestTest extends TestCase
         $payload = $this->payload();
         $payload['buckets'][] = ['type' => 'exception', 'key' => 'new-error', 'bucket_start' => $through, 'bucket_seconds' => 300, 'count' => 20];
         $this->ingest($payload)->assertOk();
-        $this->assertSame('unknown', $this->instance->fresh()->health());
+        $this->assertSame('transferring', $this->instance->fresh()->health());
         $this->assertNull(app(DataFlowStatus::class)->window($this->instance->fresh(), 5, 'exception'));
 
         // A fresh UUID with an old interval must not acknowledge newer chunks.
         $this->ingest($this->payload($this->coverage()))->assertOk();
-        $this->assertSame('unknown', $this->instance->fresh()->health());
+        $this->assertSame('transferring', $this->instance->fresh()->health());
         $this->travel(5)->minutes();
         $this->instance->update(['last_heartbeat_at' => now()]);
         $this->ingest($this->payload($this->coverage()))->assertOk();

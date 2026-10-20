@@ -11,6 +11,30 @@ class DataFlowStatus
 
     public const MAX_AGE_SECONDS = 900;
 
+    public const TRANSFER_TIMEOUT_SECONDS = 300;
+
+    private const REASONS = [
+        'healthy' => 'Recent data flow is confirmed.',
+        'heartbeat_missing' => 'No heartbeat has been received.',
+        'heartbeat_stale' => 'Heartbeat is stale.',
+        'heartbeat_unverified' => 'Heartbeat freshness is unverified.',
+        'export_missing' => 'No accepted export is available.',
+        'export_stale' => 'Accepted exports are stale.',
+        'export_unverified' => 'Export freshness or clock alignment is unverified.',
+        'coverage_stale' => 'Confirmed data coverage is stale.',
+        'coverage_warming_up' => 'Waiting for a complete confirmed interval.',
+        'coverage_unverified' => 'Data completeness is unverified.',
+        'coverage_clock_invalid' => 'Coverage timestamps or clock alignment are invalid.',
+        'export_in_progress' => 'An export is in progress; waiting for its final confirmation.',
+        'export_overdue' => 'The export has not received its final confirmation within five minutes.',
+        'export_unconfirmed' => 'The latest export is not fully confirmed.',
+    ];
+
+    public static function reasonText(?string $code): string
+    {
+        return self::REASONS[$code ?? ''] ?? 'Reason was not recorded.';
+    }
+
     public const TYPES = [
         'request', 'request_hist', 'exception', 'slow_request', 'slow_query',
         'slow_job', 'slow_outgoing_request', 'cache:hit', 'cache:miss', 'active_user',
@@ -27,6 +51,7 @@ class DataFlowStatus
         $export = $this->receipt($instance->last_ingest_at?->getTimestamp(), $now, self::MAX_AGE_SECONDS);
         $meta = is_array($instance->meta) ? $instance->meta : [];
         $proof = $this->proof($meta['data_flow'] ?? null);
+        $coverageClockInvalid = false;
         $coverage = [
             'state' => 'unknown', 'from' => null, 'through' => null,
             'confirmed_at' => null, 'age_seconds' => null, 'types' => [],
@@ -35,6 +60,7 @@ class DataFlowStatus
         if ($proof !== null) {
             $age = $now - $proof['covered_through'];
             $confirmationAge = $now - $proof['confirmed_at'];
+            $coverageClockInvalid = $age < 60 || $confirmationAge < 0 || abs($proof['clock_skew_seconds']) > 60;
             $coverage = [
                 'state' => 'unknown', 'from' => $proof['covered_from'],
                 'through' => $proof['covered_through'], 'confirmed_at' => $proof['confirmed_at'],
@@ -57,24 +83,43 @@ class DataFlowStatus
             $export['state'] = 'unknown';
         }
         $pending = ($meta['data_flow_pending'] ?? false) !== false;
-        if ($pending) {
-            $coverage['state'] = 'unknown';
-        }
+        $startedAt = $meta['data_flow_pending_since'] ?? null;
+        $validStart = ($meta['data_flow_pending'] ?? false) === true
+            && is_int($startedAt) && $startedAt >= 0 && $startedAt <= $now;
+        $transferAge = $pending && $validStart ? $now - $startedAt : null;
+        $transfer = [
+            'state' => ! $pending ? 'idle' : ($transferAge === null ? 'unverified'
+                : ($transferAge < self::TRANSFER_TIMEOUT_SECONDS ? 'transferring' : 'overdue')),
+            'started_at' => $pending && $validStart ? $startedAt : null,
+            'age_seconds' => $transferAge,
+            'deadline_at' => $pending && $validStart ? $startedAt + self::TRANSFER_TIMEOUT_SECONDS : null,
+        ];
 
-        [$state, $reason] = match (true) {
-            $heartbeat['age_seconds'] !== null && $heartbeat['age_seconds'] >= 600 => ['down', 'Heartbeat is stale.'],
-            $heartbeat['state'] === 'unknown' => ['unknown', 'Heartbeat freshness is unverified.'],
-            $heartbeat['state'] !== 'healthy' => ['degraded', 'Heartbeat is stale.'],
-            $export['state'] === 'unknown' => ['unknown', 'No accepted export is available.'],
-            $export['state'] !== 'healthy' => ['degraded', 'Accepted exports are stale.'],
-            $pending => ['unknown', 'The latest export is not fully confirmed.'],
-            $coverage['state'] === 'stale' => ['degraded', 'Confirmed data coverage is stale.'],
-            $coverage['state'] === 'warming_up' => ['unknown', 'Waiting for a complete confirmed interval.'],
-            $coverage['state'] !== 'healthy' => ['unknown', 'Data completeness is unverified.'],
-            default => ['healthy', 'Recent data flow is confirmed.'],
+        // In-flight data never proves health. A bounded neutral transfer needs
+        // an existing fresh proof and every independent freshness check first.
+        [$state, $reasonCode] = match (true) {
+            $heartbeat['age_seconds'] !== null && $heartbeat['age_seconds'] >= 600 => ['down', 'heartbeat_stale'],
+            $heartbeat['timestamp'] === null => ['unknown', 'heartbeat_missing'],
+            $heartbeat['state'] === 'unknown' => ['unknown', 'heartbeat_unverified'],
+            $heartbeat['state'] !== 'healthy' => ['degraded', 'heartbeat_stale'],
+            $export['timestamp'] === null => ['unknown', 'export_missing'],
+            $export['state'] === 'unknown' => ['unknown', 'export_unverified'],
+            $export['state'] !== 'healthy' => ['degraded', 'export_stale'],
+            $coverageClockInvalid => ['unknown', 'coverage_clock_invalid'],
+            $coverage['state'] === 'stale' => ['degraded', 'coverage_stale'],
+            $coverage['state'] === 'warming_up' => ['unknown', 'coverage_warming_up'],
+            $coverage['state'] !== 'healthy' => ['unknown', 'coverage_unverified'],
+            $pending && $transfer['state'] === 'transferring' => ['transferring', 'export_in_progress'],
+            $pending && $transfer['state'] === 'overdue' => ['degraded', 'export_overdue'],
+            $pending => ['unknown', 'export_unconfirmed'],
+            default => ['healthy', 'healthy'],
         };
+        if ($pending) {
+            $coverage['state'] = $state === 'transferring' ? 'transferring' : 'unknown';
+        }
+        $reason = self::reasonText($reasonCode);
 
-        return compact('state', 'reason', 'heartbeat', 'export', 'coverage');
+        return ['reason_code' => $reasonCode, ...compact('state', 'reason', 'heartbeat', 'export', 'coverage', 'transfer')];
     }
 
     /**
